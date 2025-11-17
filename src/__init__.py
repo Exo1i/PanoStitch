@@ -1,0 +1,1 @@
+"""PanoStitch - Panorama Stitching Implementation"""
