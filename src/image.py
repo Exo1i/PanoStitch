@@ -50,18 +50,18 @@ class Image:
 
     def compute_features(self, use_harris: bool = True) -> None:
         """
-        Module 2 & 3: Compute the features and keypoints.
+            Module 2 & 3: Compute the features and keypoints.
 
-        Args:
-            use_harris: If True, use Harris corner detection; else use SIFT
+            Args:
+                use_harris: If True, use Harris corner detection; else use SIFT
 
-        TODO Module 3: Replace SIFT descriptors with custom 8D descriptors
+        TODO Module 3: Implement custom-from-scratch SIFT descriptors (128D) — replace OpenCV SIFT
         """
         if use_harris:
             # Module 2: Harris Corner Detection
             keypoints = self._harris_corner_detection()
 
-            # Module 3: Still using SIFT descriptors for now (TODO)
+            # Module 3: Still using OpenCV SIFT descriptors for now (TODO: implement custom-from-scratch 128D SIFT descriptor)
             descriptor = cv2.SIFT_create()  # type: ignore
             keypoints, features = descriptor.compute(self.image, keypoints)
 

@@ -167,12 +167,14 @@ src/
 
 Currently uses SIFT descriptors (128-dimensional) computed at Harris corner locations or SIFT keypoints.
 
-**Planned Custom Implementation**:
+**Planned Custom Implementation**: Implement a from-scratch SIFT-like descriptor (128-dimensional)
 
-- 8x8 oriented patch descriptor
-- Gaussian weighting
-- Rotation invariance
-- 64-dimensional feature vector
+- Extract a 16×16 oriented patch around the keypoint (relative to dominant orientation and scale)
+- Divide the patch into a 4×4 grid of 16 sub-blocks (each 4×4 pixels)
+- For each sub-block compute an 8-bin histogram of gradient orientations (0°–360°), weighted by gradient magnitude
+- Apply a Gaussian weighting window centered on the keypoint for spatial weighting
+- Concatenate the 16 histograms into a 128-dimensional vector, normalize to unit length
+- Apply value clamping (e.g., limit values > 0.2) and renormalize to improve illumination robustness
 
 ### Module 4: Feature Matching
 
@@ -400,7 +402,7 @@ def single_weights_matrix(size):
 
 3. **Memory Constraints**: Very large panoramas (20+ megapixels) require downsampling or tiled processing.
 
-4. **Descriptor Implementation**: Currently using SIFT descriptors. Custom 8D descriptors (planned) will be faster but less robust.
+4. **Descriptor Implementation**: Currently using SIFT descriptors. Planned work: implement custom-from-scratch SIFT descriptors (128D) for educational purposes;
 
 5. **Blending Quality**: Simple weighted blending is used. Multi-band blending would reduce ghosting artifacts.
 
@@ -463,7 +465,7 @@ Results are saved to `results/panorama_0.jpg`. Validate by checking:
 
 ## Future Improvements
 
-1. **Custom Descriptor Implementation**: Replace SIFT with 8D oriented patch descriptors
+1. **Custom Descriptor Implementation**: Implement a custom-from-scratch SIFT descriptor (16×16 → 4×4×8 = 128D) as an alternative to OpenCV's SIFT;
 2. **Custom Matching**: Vectorized brute-force implementation for educational purposes
 3. **Bundle Adjustment**: Global optimization of camera parameters
 4. **Multi-band Blending**: Laplacian pyramid blending for better seam hiding
