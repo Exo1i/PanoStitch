@@ -244,11 +244,8 @@ class MultiImageMatches:
         """
         Module 4: Compute matches between two images using Lowe's ratio test.
 
-        TODO: Replace with custom implementation:
-        - Implement brute-force descriptor matching
-        - Compute pairwise Euclidean distances
-        - Apply k-NN search (k=2)
-        - Apply Lowe's ratio test
+        Uses custom vectorized implementation by default.
+        Set use_opencv=True for OpenCV comparison.
 
         Args:
             image_a: First image
@@ -257,10 +254,33 @@ class MultiImageMatches:
         Returns:
             List of valid matches
         """
+        # Toggle between implementations for comparison
+        use_opencv = False  # Set True to use OpenCV, False for custom
+
+        if use_opencv:
+            return self._compute_matches_opencv(image_a, image_b)
+        else:
+            return self._compute_matches_vectorized(image_a, image_b)
+
+    def _compute_matches_opencv(
+        self, image_a: Image, image_b: Image
+    ) -> List[cv2.DMatch]:
+        """
+        OpenCV-based feature matching (original implementation).
+
+        Uses cv2.BFMatcher with knnMatch for comparison baseline.
+
+        Args:
+            image_a: First image
+            image_b: Second image
+
+        Returns:
+            List of valid matches after Lowe's ratio test
+        """
         if image_a.features is None or image_b.features is None:
             return []
 
-        # Current: Using OpenCV's BruteForce matcher
+        # Using OpenCV's BruteForce matcher
         matcher = cv2.DescriptorMatcher_create("BruteForce")  # type: ignore
         raw_matches = matcher.knnMatch(image_a.features, image_b.features, 2)
         matches: List[cv2.DMatch] = []
@@ -269,5 +289,127 @@ class MultiImageMatches:
             # Lowe's ratio test
             if m.distance < n.distance * self.ratio:
                 matches.append(m)
+
+        return matches
+
+    def _compute_matches_loop(
+        self, image_a: Image, image_b: Image
+    ) -> List[cv2.DMatch]:
+        """
+        Implements brute-force matching with nested Python loops.
+        Time complexity: O(N × M × D) where D=128 (descriptor dimension)
+
+        Args:
+            image_a: First image
+            image_b: Second image
+
+        Returns:
+            List of valid matches after Lowe's ratio test
+        """
+        if image_a.features is None or image_b.features is None:
+            return []
+
+        features_a = image_a.features  # (N, 128)
+        features_b = image_b.features  # (M, 128)
+
+        if len(features_b) < 2:
+            return []
+
+        matches: List[cv2.DMatch] = []
+
+        # For each descriptor in image_a, find 2 nearest neighbors in image_b
+        for i in range(len(features_a)):
+            desc_a = features_a[i]
+
+            # Compute distance to all descriptors in image_b
+            distances: List[tuple[int, float]] = []
+            for j in range(len(features_b)):
+                desc_b = features_b[j]
+                # Euclidean distance
+                dist = float(np.sqrt(np.sum((desc_a - desc_b) ** 2)))
+                distances.append((j, dist))
+
+            # Sort by distance to get 2 nearest neighbors
+            distances.sort(key=lambda x: x[1])
+            best_idx, best_dist = distances[0]
+            _, second_dist = distances[1]
+
+            # Lowe's ratio test
+            if best_dist < second_dist * self.ratio:
+                match = cv2.DMatch(
+                    _queryIdx=i,
+                    _trainIdx=best_idx,
+                    _distance=best_dist,
+                )
+                matches.append(match)
+
+        return matches
+
+    def _compute_matches_vectorized(
+        self, image_a: Image, image_b: Image
+    ) -> List[cv2.DMatch]:
+        """
+        Vectorized feature matching using NumPy (fast, custom implementation).
+
+        Implements brute-force matching with vectorized distance computation.
+        Uses the identity: ||a-b||² = ||a||² + ||b||² - 2·a·bᵀ
+
+        Time complexity: O(N × M) with NumPy optimizations
+        Space complexity: O(N × M) for distance matrix
+
+        Args:
+            image_a: First image
+            image_b: Second image
+
+        Returns:
+            List of valid matches after Lowe's ratio test
+        """
+        if image_a.features is None or image_b.features is None:
+            return []
+
+        features_a = image_a.features.astype(np.float64)  # (N, 128)
+        features_b = image_b.features.astype(np.float64)  # (M, 128)
+
+        if len(features_b) < 2:
+            return []
+
+        # Step 1: Compute distance matrix using vectorized operations
+        # ||a - b||² = ||a||² + ||b||² - 2·a·bᵀ
+        a_sq = np.sum(features_a**2, axis=1, keepdims=True)  # (N, 1)
+        b_sq = np.sum(features_b**2, axis=1, keepdims=True)  # (M, 1)
+        cross_term = features_a @ features_b.T  # (N, M)
+
+        dist_sq = a_sq + b_sq.T - 2 * cross_term  # (N, M)
+        # Clamp negative values (numerical errors) before sqrt
+        dist_matrix = np.sqrt(np.maximum(dist_sq, 0))
+
+        # Step 2: Find 2 nearest neighbors using argpartition (O(M) per row)
+        # argpartition is faster than full sort when we only need k smallest
+        nn_indices = np.argpartition(dist_matrix, kth=1, axis=1)[:, :2]  # (N, 2)
+
+        # Gather distances for the 2 nearest neighbors
+        rows = np.arange(len(features_a))[:, np.newaxis]  # (N, 1)
+        nn_distances = dist_matrix[rows, nn_indices]  # (N, 2)
+
+        # Step 3: Sort the 2 neighbors so index 0 is the closest
+        sorted_order = np.argsort(nn_distances, axis=1)
+        nn_indices = np.take_along_axis(nn_indices, sorted_order, axis=1)
+        nn_distances = np.take_along_axis(nn_distances, sorted_order, axis=1)
+
+        # Step 4: Apply Lowe's ratio test
+        # Keep matches where best_dist < second_best_dist * ratio
+        ratio_mask = nn_distances[:, 0] < nn_distances[:, 1] * self.ratio
+
+        # Step 5: Build cv2.DMatch objects for valid matches
+        matches: List[cv2.DMatch] = []
+        valid_indices = np.where(ratio_mask)[0]
+
+        for i in valid_indices:
+            match = cv2.DMatch(
+                _queryIdx=int(i),
+                _trainIdx=int(nn_indices[i, 0]),
+                _distance=float(nn_distances[i, 0]),
+            )
+            matches.append(match)
 
         return matches
