@@ -173,131 +173,113 @@ def add_image(
 
 def simple_blending(images: List[Image]) -> NDArray[np.uint8]:
     """
-    Module 8: Fully custom multi-band (Laplacian pyramid) blending from scratch.
-    Fixed shape handling for robust reconstruction.
+    Memory-safe custom multi-band blending with fallback.
+    Fixed: GaussianBlur now works on float32 (converted from float16).
     """
     if len(images) == 0:
         raise ValueError("No images to blend")
     if len(images) == 1:
         return images[0].image.copy()
 
-    # Compute global canvas
+    # Compute canvas (same as before)
     corners_images = [get_new_corners(img.image, img.H) for img in images]
     all_x = np.hstack([c[0] for corners in corners_images for c in corners])
     all_y = np.hstack([c[1] for corners in corners_images for c in corners])
     min_x, min_y = float(np.min(all_x)), float(np.min(all_y))
     max_x, max_y = float(np.max(all_x)), float(np.max(all_y))
-    width = int(np.ceil(max_x - min_x))
-    height = int(np.ceil(max_y - min_y))
+    orig_width = int(np.ceil(max_x - min_x))
+    orig_height = int(np.ceil(max_y - min_y))
 
-    max_width, max_height = 12000, 12000
+    # Memory safety
+    MAX_WIDTH, MAX_HEIGHT = 8000, 5000
+    MAX_IMAGES_MULTI = 5
+
+    use_multi_band = len(images) <= MAX_IMAGES_MULTI and orig_width <= 10000 and orig_height <= 6000
+
+    if not use_multi_band:
+        logging.info(f"Falling back to simple blending for {len(images)} images (memory-safe)")
+        return _fallback_simple_blending(images, orig_width, orig_height, min_x, min_y)
+
+    # Multi-band path
     scale_factor = 1.0
-    if width > max_width or height > max_height:
-        scale_factor = min(max_width / width, max_height / height)
+    width, height = orig_width, orig_height
+    if width > MAX_WIDTH or height > MAX_HEIGHT:
+        scale_factor = min(MAX_WIDTH / width, MAX_HEIGHT / height)
         width = int(width * scale_factor)
         height = int(height * scale_factor)
+        logging.info(f"Downscaling multi-band by {scale_factor:.3f} → {width}x{height}")
 
-    width = max(1, width)
-    height = max(1, height)
     canvas_size = (width, height)
-    logging.info(f"Final canvas: {width}x{height} (scale: {scale_factor:.3f})")
-
-    scale_matrix = np.array([[scale_factor, 0, 0], [0, scale_factor, 0], [0, 0, 1]], dtype=np.float64)
-    offset_matrix = np.array([[1, 0, -min_x], [0, 1, -min_y], [0, 0, 1]], dtype=np.float64)
+    scale_matrix = np.array([[scale_factor, 0, 0], [0, scale_factor, 0], [0, 0, 1]], np.float64)
+    offset_matrix = np.array([[1, 0, -min_x], [0, 1, -min_y], [0, 0, 1]], np.float64)
     added_offset = scale_matrix @ offset_matrix
 
-    # Parameters
-    num_levels = 6
-    feather_amount = 101
-    weight_power = 1.8
+    num_levels = 5
+    feather_amount = 81
 
-    # Custom pyrDown and pyrUp from scratch - FIXED
+    # Custom pyrDown/pyrUp - FIXED: convert to float32 for GaussianBlur
     def my_pyrDown(img: np.ndarray) -> np.ndarray:
-        """Downsample by 2 with Gaussian blur."""
         if img.dtype != np.float32:
             img = img.astype(np.float32)
         blurred = cv2.GaussianBlur(img, (5, 5), sigmaX=0.85)
-        # Ensure even dimensions for clean downsampling
-        h, w = blurred.shape[:2]
-        return blurred[:h//2*2:2, :w//2*2:2]
+        return blurred[::2, ::2]
 
-    def my_pyrUp(img: np.ndarray, target_shape: tuple) -> np.ndarray:
-        """
-        Upsample by 2 with Gaussian blur. target_shape = (height, width).
-        """
+    def my_pyrUp(img: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
         if img.dtype != np.float32:
             img = img.astype(np.float32)
         h, w = img.shape[:2]
-        target_h, target_w = target_shape
-        
-        # Create upsampled array
-        upsampled = np.zeros((h * 2, w * 2, img.shape[2]), dtype=np.float32)
+        upsampled = np.zeros((h*2, w*2, img.shape[2]), dtype=np.float32)
         upsampled[::2, ::2] = img
-        
-        # Apply Gaussian blur and energy compensation
-        blurred = cv2.GaussianBlur(upsampled, (5, 5), sigmaX=0.85)
-        blurred *= 4.0
-        
-        # Resize to exact target dimensions
+        blurred = cv2.GaussianBlur(upsampled, (5, 5), sigmaX=0.85) * 4.0
         if (blurred.shape[0], blurred.shape[1]) != (target_h, target_w):
             blurred = cv2.resize(blurred, (target_w, target_h), interpolation=cv2.INTER_LINEAR)
-        
-        return blurred
+        return blurred.astype(np.float16)  # Back to float16 to save memory
 
-    # Warp images and compute weight maps
+    # Warp and weights in float16
     warped_images = []
     weight_maps = []
     for image in images:
         H = added_offset @ image.H
-        warped = cv2.warpPerspective(image.image, H, canvas_size, flags=cv2.INTER_LINEAR)
+        warped = cv2.warpPerspective(image.image, H, canvas_size, flags=cv2.INTER_LINEAR).astype(np.float16)
 
         gray = cv2.cvtColor(image.image, cv2.COLOR_BGR2GRAY)
         mask = (gray > 5).astype(np.uint8) * 255
         warped_mask = cv2.warpPerspective(mask, H, canvas_size)
 
         dist = cv2.distanceTransform(warped_mask, cv2.DIST_L2, 5)
-        if dist.max() > 0:
-            dist /= dist.max()
+        dist = dist / (dist.max() + 1e-8)
         dist = cv2.GaussianBlur(dist, (feather_amount, feather_amount), 0)
-        dist = np.power(dist, weight_power)
 
-        weights = np.repeat(dist[:, :, np.newaxis], 3, axis=2) + 1e-8
+        weights = np.repeat(dist[..., np.newaxis], 3, axis=2).astype(np.float16) + 1e-8
 
-        warped_images.append(warped.astype(np.float32))
-        weight_maps.append(weights.astype(np.float32))
+        warped_images.append(warped)
+        weight_maps.append(weights)
 
-    # Build Laplacian and Gaussian pyramids from scratch
+    # Build pyramids
     def build_laplacian_pyramid(img: np.ndarray, levels: int):
         pyramid = []
-        sizes = []  # Store (height, width) tuples
-        current = img.copy()
-        
+        sizes = []
+        current = img
         for _ in range(levels - 1):
-            sizes.append((current.shape[0], current.shape[1]))  # (h, w)
+            sizes.append((current.shape[0], current.shape[1]))
             down = my_pyrDown(current)
-            up = my_pyrUp(down, (current.shape[0], current.shape[1]))  # Correct order: (h, w)
+            up = my_pyrUp(down, current.shape[0], current.shape[1])
             lap = current - up
-            pyramid.append(lap)
+            pyramid.append(lap.astype(np.float16))
             current = down
-        
-        pyramid.append(current)  # Residual low-frequency level
-        sizes.append((current.shape[0], current.shape[1]))
+        pyramid.append(current)
         return pyramid, sizes
 
-    def build_gaussian_pyramid(img: np.ndarray, levels: int):
+    def build_gaussian_pyramid(wt: np.ndarray, levels: int):
         pyramid = []
-        current = img.copy()
-        
+        current = wt
         for _ in range(levels):
             pyramid.append(current)
             if len(pyramid) == levels:
                 break
             current = my_pyrDown(current)
-        
         return pyramid
 
-    # Build all pyramids using first image's sizes as reference
-    logging.info(f"Building {len(images)} pyramids with {num_levels} levels...")
     laplacian_pyramids = []
     weight_pyramids = []
     reconstruction_sizes = None
@@ -305,32 +287,22 @@ def simple_blending(images: List[Image]) -> NDArray[np.uint8]:
     for i, (img, wt) in enumerate(zip(warped_images, weight_maps)):
         lap_pyr, sizes = build_laplacian_pyramid(img, num_levels)
         laplacian_pyramids.append(lap_pyr)
-        
         if i == 0:
-            reconstruction_sizes = sizes  # Reference sizes from first image
-            logging.info(f"Reference pyramid sizes: {[s[::-1] for s in sizes]}")  # Log (w,h)
+            reconstruction_sizes = sizes
         
         wt_pyr = build_gaussian_pyramid(wt, num_levels)
         weight_pyramids.append(wt_pyr)
 
-    # Blend each level
+    # Blend levels
     blended_pyramid = []
     for level in range(num_levels):
-        # Use reference shape from first pyramid
         ref_shape = laplacian_pyramids[0][level].shape
         blended = np.zeros(ref_shape, dtype=np.float32)
         weight_sum = np.zeros(ref_shape, dtype=np.float32)
 
         for lap_pyr, wt_pyr in zip(laplacian_pyramids, weight_pyramids):
-            # Ensure consistent shapes
-            lap_level = lap_pyr[level]
-            wt_level = wt_pyr[level]
-            if lap_level.shape != ref_shape or wt_level.shape != ref_shape:
-                lap_level = cv2.resize(lap_level, (ref_shape[2], ref_shape[0]), interpolation=cv2.INTER_LINEAR)
-                wt_level = cv2.resize(wt_level, (ref_shape[2], ref_shape[0]), interpolation=cv2.INTER_LINEAR)
-            
-            blended += lap_level * wt_level
-            weight_sum += wt_level
+            blended += lap_pyr[level].astype(np.float32) * wt_pyr[level].astype(np.float32)
+            weight_sum += wt_pyr[level].astype(np.float32)
 
         mask = weight_sum > 1e-6
         if np.any(mask):
@@ -338,22 +310,51 @@ def simple_blending(images: List[Image]) -> NDArray[np.uint8]:
 
         blended_pyramid.append(blended)
 
-    # Reconstruct from blended pyramid - FIXED SHAPE HANDLING
-    logging.info("Reconstructing panorama...")
+    # Reconstruct
     result = blended_pyramid[-1].copy()
-    
     for i in range(num_levels - 2, -1, -1):
-        target_h, target_w = reconstruction_sizes[i]  # (height, width)
-        logging.debug(f"Level {i}: upsampling {result.shape[:2]} to ({target_h}, {target_w})")
-        
-        upsampled = my_pyrUp(result, (target_h, target_w))
-        result = upsampled + blended_pyramid[i]
-    
-    # Ensure final result matches canvas size
-    if result.shape[:2] != canvas_size:
-        result = cv2.resize(result, canvas_size, interpolation=cv2.INTER_LINEAR)
+        target_h, target_w = reconstruction_sizes[i]
+        result = my_pyrUp(result, target_h, target_w) + blended_pyramid[i]
+
+    if result.shape[:2] != (height, width):
+        result = cv2.resize(result, (width, height), interpolation=cv2.INTER_LINEAR)
 
     panorama = np.clip(result, 0, 255).astype(np.uint8)
-    logging.info(f"Custom multi-band blending complete. Output: {panorama.shape[:2]}")
+    logging.info("Multi-band blending complete.")
     return panorama
 
+def _fallback_simple_blending(images: List[Image], orig_w: int, orig_h: int, min_x: float, min_y: float) -> NDArray[np.uint8]:
+    """Simple distance-transform blending — very low memory, good quality."""
+    # Strong downscale for fallback
+    max_w, max_h = 6000, 3000
+    scale = min(max_w / orig_w, max_h / orig_h)
+    width = int(orig_w * scale)
+    height = int(orig_h * scale)
+    canvas_size = (width, height)
+
+    scale_matrix = np.array([[scale, 0, 0], [0, scale, 0], [0, 0, 1]], np.float64)
+    offset_matrix = np.array([[1, 0, -min_x], [0, 1, -min_y], [0, 0, 1]], np.float64)
+    added_offset = scale_matrix @ offset_matrix
+
+    panorama = np.zeros((height, width, 3), dtype=np.float64)
+    weights = np.zeros((height, width, 3), dtype=np.float64)
+
+    for img in images:
+        H = added_offset @ img.H
+        warped = cv2.warpPerspective(img.image, H, canvas_size)
+
+        gray = cv2.cvtColor(img.image, cv2.COLOR_BGR2GRAY)
+        mask = (gray > 10).astype(np.uint8) * 255
+        warped_mask = cv2.warpPerspective(mask, H, canvas_size)
+        dist = cv2.distanceTransform(warped_mask, cv2.DIST_L2, 5)
+        if dist.max() > 0:
+            dist /= dist.max()
+        dist = cv2.GaussianBlur(dist, (101, 101), 0)
+        img_weights = np.repeat(dist[..., np.newaxis], 3, axis=2) + 1e-8
+
+        panorama += warped.astype(np.float64) * img_weights
+        weights += img_weights
+
+    mask = weights > 1e-6
+    panorama[mask] /= weights[mask]
+    return np.clip(panorama, 0, 255).astype(np.uint8)
