@@ -216,7 +216,7 @@ def add_image(
 
 def simple_blending(images: List[Image]) -> NDArray[np.uint8]:
     """
-    Module 8: Build a panorama using simple blending.
+    Module 8: Build a panorama using enhanced blending with distance transform weights.
 
     Args:
         images: Images to stitch
@@ -265,45 +265,54 @@ def simple_blending(images: List[Image]) -> NDArray[np.uint8]:
     )
     added_offset = scale_matrix @ offset_matrix
 
-    panorama = np.zeros((height, width, 3), dtype=np.uint8)
-    weights = np.zeros((height, width, 3), dtype=np.float64)
+    # Use float64 for accumulation to avoid precision loss
+    panorama_float = np.zeros((height, width, 3), dtype=np.float64)
+    weights_sum = np.zeros((height, width, 3), dtype=np.float64)
 
     # Warp every image to the global canvas and composite
-    for image in images:
+    for idx, image in enumerate(images):
         H = added_offset @ image.H
         size = (width, height)
-        warped = np.asarray(cv2.warpPerspective(image.image, H, size)).astype(np.uint8)
+        warped = cv2.warpPerspective(image.image, H, size)
+        
+        # Create mask for valid pixels
+        gray = cv2.cvtColor(image.image, cv2.COLOR_BGR2GRAY)
+        mask = (gray > 0).astype(np.uint8) * 255
+        warped_mask = cv2.warpPerspective(mask, H, size)
+        
+        # Use distance transform for better weight distribution
+        # This gives higher weights to pixels farther from edges
+        dist_transform = cv2.distanceTransform(warped_mask, cv2.DIST_L2, 5)
+        
+        # Normalize distance transform to [0, 1]
+        if dist_transform.max() > 0:
+            dist_transform = dist_transform / dist_transform.max()
+        
+        # Apply Gaussian blur for smooth feathering (larger kernel = smoother transitions)
+        feather_amount = 51  # Must be odd number
+        dist_transform = cv2.GaussianBlur(dist_transform, (feather_amount, feather_amount), 0)
+        
+        # Create 3-channel weight map
+        image_weights = np.repeat(dist_transform[:, :, np.newaxis], 3, axis=2)
+        
+        # Add small epsilon to avoid division by zero
+        image_weights = image_weights + 1e-10
+        
+        # Accumulate weighted images
+        warped_float = warped.astype(np.float64)
+        panorama_float += warped_float * image_weights
+        weights_sum += image_weights
+        
+        logging.info(f"Added image {idx+1}/{len(images)}, weight range: [{image_weights.min():.3f}, {image_weights.max():.3f}]")
 
-        image_weights = single_weights_matrix(
-            (int(image.image.shape[0]), int(image.image.shape[1]))
-        )
-        image_weights = np.repeat(
-            np.asarray(cv2.warpPerspective(image_weights, H, size))[
-                :, :, np.newaxis
-            ].astype(np.float64),
-            3,
-            axis=2,
-        )
-
-        # Normalize and blend
-        denom = weights + image_weights
-        normalized_weights = np.divide(weights, denom, where=denom != 0)
-        # convert panorama to float for accurate blending, then cast back
-        panorama_float = panorama.astype(np.float64)
-        blended = np.where(
-            np.logical_and(
-                np.repeat(np.sum(panorama, axis=2)[:, :, np.newaxis], 3, axis=2) == 0,
-                np.repeat(np.sum(warped, axis=2)[:, :, np.newaxis], 3, axis=2) == 0,
-            ),
-            0,
-            warped.astype(np.float64) * (1 - normalized_weights)
-            + panorama_float * normalized_weights,
-        )
-
-        panorama[:, :, :] = np.clip(blended, 0, 255).astype(np.uint8)
-
-        weights = (weights + image_weights) / np.maximum(
-            (weights + image_weights).max(), 1e-10
-        )
+    # Normalize by total weights to get final blended result
+    # Avoid division by zero
+    mask = weights_sum > 1e-10
+    panorama_float = np.divide(panorama_float, weights_sum, where=mask, out=np.zeros_like(panorama_float))
+    
+    # Convert back to uint8
+    panorama = np.clip(panorama_float, 0, 255).astype(np.uint8)
+    
+    logging.info(f"Blending complete. Output range: [{panorama.min()}, {panorama.max()}]")
 
     return panorama
