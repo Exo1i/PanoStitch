@@ -2,13 +2,11 @@
 Module 8: Blending
 Handles image blending and final panorama creation.
 """
-
 import cv2
 import numpy as np
 import logging
 from typing import List, Tuple, Optional
 from numpy.typing import NDArray
-
 from .image import Image
 
 
@@ -45,10 +43,8 @@ def get_new_corners(
         ],
         dtype=np.float64,
     ).T
-
     transformed = H @ corners
     transformed = transformed / transformed[2, :]
-
     return [transformed[:2, i : i + 1] for i in range(4)]
 
 
@@ -71,14 +67,11 @@ def get_new_size(corners_images: List[List[NDArray[np.float64]]]) -> Tuple[int, 
     bottom_right_x = np.max([corners[3][0] for corners in corners_images])
     bottom_left_y = np.max([corners[2][1] for corners in corners_images])
     bottom_right_y = np.max([corners[3][1] for corners in corners_images])
-
     width = int(np.ceil(max(float(bottom_right_x), float(top_right_x))))
     height = int(np.ceil(max(float(bottom_right_y), float(bottom_left_y))))
-
     # Cap at conservative limits to prevent memory issues
     width = max(100, min(width, 5000))
     height = max(100, min(height, 4000))
-
     return width, height
 
 
@@ -89,15 +82,10 @@ def get_new_parameters(
 ) -> Tuple[Tuple[int, int], NDArray[np.float64]]:
     """Module 6: Get the new size and offset matrix for warping."""
     corners = get_new_corners(image, H)
-
-    # When a panorama already exists, compute an offset that keeps both
-    # the transformed image and the current panorama within positive coordinates
     if panorama is None:
         added_offset = get_offset(corners)
     else:
-        # Corners of the panorama in its current coordinate system
         corners_panorama = get_new_corners(panorama, np.eye(3, dtype=np.float64))
-        # Combine corners of image and panorama to compute global minimums
         all_corners = corners + corners_panorama
         xs = np.hstack([c[0] for c in all_corners]).astype(np.float64)
         ys = np.hstack([c[1] for c in all_corners]).astype(np.float64)
@@ -106,17 +94,12 @@ def get_new_parameters(
         tx = max(0, -min_x)
         ty = max(0, -min_y)
         added_offset = np.array([[1, 0, tx], [0, 1, ty], [0, 0, 1]], dtype=np.float64)
-
     corners_image = get_new_corners(image, added_offset @ H)
     if panorama is None:
         size = get_new_size([corners_image])
     else:
         corners_panorama = get_new_corners(panorama, added_offset)
         size = get_new_size([corners_image, corners_panorama])
-
-    import logging
-
-    # Debug info for new parameters
     logging.info(
         f"get_new_parameters: pano shape {None if panorama is None else panorama.shape[:2]}, "
         f"img shape {image.shape[:2]}, added_offset tx/ty: {added_offset[0,2]:.1f}/{added_offset[1,2]:.1f}, "
@@ -132,28 +115,14 @@ def add_image(
     weights: Optional[NDArray[np.float64]],
 ) -> Tuple[NDArray[np.uint8], NDArray[np.float64], NDArray[np.float64]]:
     """
-    Module 8: Add a new image to panorama with blending.
-
-    Args:
-        panorama: Existing panorama
-        image: Image to add
-        offset: Offset already applied to panorama
-        weights: Weights matrix of the panorama
-
-    Returns:
-        Updated panorama, offset, and weights
+    Module 8: Add a new image to panorama with blending (legacy incremental method).
     """
     H = offset @ np.asarray(image.H, dtype=np.float64)
-    import logging
-
     logging.info(f"add_image: image={image.path}, H:\n{H}")
     size, added_offset = get_new_parameters(panorama, image.image, H)
     new_image = np.asarray(
         cv2.warpPerspective(image.image, added_offset @ H, size)
     ).astype(np.uint8)
-    logging.info(
-        f"add_image: new_image shape {new_image.shape}, min/max: {new_image.min()}/{new_image.max()}"
-    )
 
     if panorama is None:
         panorama = np.zeros_like(new_image)
@@ -162,7 +131,6 @@ def add_image(
         panorama = np.asarray(cv2.warpPerspective(panorama, added_offset, size)).astype(
             np.uint8
         )
-        # weights may be None; if so, initialize it
         if weights is None:
             weights = np.zeros(panorama.shape, dtype=np.float64)
         else:
@@ -180,18 +148,13 @@ def add_image(
         3,
         axis=2,
     )
-    logging.info(
-        f"add_image: image_weights shape {image_weights.shape}, min/max: {image_weights.min()}/{image_weights.max()}"
-    )
 
     normalized_weights = np.zeros_like(weights, dtype=np.float64)
-    # weights and image_weights are float arrays; ensure no None
     if weights is None:
         weights = np.zeros_like(image_weights, dtype=np.float64)
     normalized_weights = np.divide(
         weights, (weights + image_weights), where=(weights + image_weights) != 0
     )
-
     panorama = np.where(
         np.logical_and(
             np.repeat(np.sum(panorama, axis=2)[:, :, np.newaxis], 3, axis=2) == 0,
@@ -204,115 +167,99 @@ def add_image(
     new_weights = (weights + image_weights) / np.maximum(
         (weights + image_weights).max(), 1e-10
     )
-    logging.info(
-        f"add_image: new_weights shape {new_weights.shape}, min/max: {new_weights.min()}/{new_weights.max()}"
-    )
 
-    logging.info(
-        f"add_image: after blend panorama min/max: {panorama.min()}/{panorama.max()}"
-    )
     return panorama, (added_offset @ offset).astype(np.float64), new_weights
 
 
 def simple_blending(images: List[Image]) -> NDArray[np.uint8]:
     """
-    Module 8: Build a panorama using enhanced blending with distance transform weights.
-
-    Args:
-        images: Images to stitch
-
-    Returns:
-        Final panorama
+    Module 8: Build a panorama using enhanced distance-transform feathering
+    + final low-frequency correction to eliminate dark seams in sky/gradients.
     """
-    # Compute global canvas size and offset by transforming all image corners
+    # Compute global canvas size and offset
     corners_images = [get_new_corners(img.image, img.H) for img in images]
-
-    # Gather all x and y coordinates
     all_x = np.hstack([c[0] for corners in corners_images for c in corners])
     all_y = np.hstack([c[1] for corners in corners_images for c in corners])
-
     min_x, min_y = float(np.min(all_x)), float(np.min(all_y))
     max_x, max_y = float(np.max(all_x)), float(np.max(all_y))
-
     width = int(np.ceil(max_x - min_x))
     height = int(np.ceil(max_y - min_y))
-
     logging.info(f"Required canvas size: {width}x{height}")
 
-    # Cap at memory-safe limits
-    max_width = 12000
-    max_height = 12000
+    # Memory-safe scaling
+    max_width, max_height = 12000, 12000
     scale_factor = 1.0
-
     if width > max_width or height > max_height:
         scale_factor = min(max_width / width, max_height / height)
         width = int(width * scale_factor)
         height = int(height * scale_factor)
-        logging.info(f"Canvas exceeds limits, scaling by {scale_factor:.3f}")
+        logging.info(f"Scaled canvas by {scale_factor:.3f}")
 
     width = max(1, width)
     height = max(1, height)
-
     logging.info(f"Final canvas size: {width}x{height}")
 
-    # Create scaling and offset transformation
-    scale_matrix = np.array(
-        [[scale_factor, 0.0, 0.0], [0.0, scale_factor, 0.0], [0.0, 0.0, 1.0]],
-        dtype=np.float64,
-    )
-    offset_matrix = np.array(
-        [[1.0, 0.0, -min_x], [0.0, 1.0, -min_y], [0.0, 0.0, 1.0]], dtype=np.float64
-    )
+    # Transformation to global canvas
+    scale_matrix = np.array([[scale_factor, 0, 0], [0, scale_factor, 0], [0, 0, 1]], dtype=np.float64)
+    offset_matrix = np.array([[1, 0, -min_x], [0, 1, -min_y], [0, 0, 1]], dtype=np.float64)
     added_offset = scale_matrix @ offset_matrix
 
-    # Use float64 for accumulation to avoid precision loss
+    # Accumulation buffers
     panorama_float = np.zeros((height, width, 3), dtype=np.float64)
     weights_sum = np.zeros((height, width, 3), dtype=np.float64)
 
-    # Warp every image to the global canvas and composite
+    # Feathering parameters - tuned for sky scenes
+    feather_amount = 151    # Very large blur for smooth low-freq blending
+    weight_power = 2.0      # Strongly favor image centers
+
     for idx, image in enumerate(images):
         H = added_offset @ image.H
         size = (width, height)
         warped = cv2.warpPerspective(image.image, H, size)
-        
-        # Create mask for valid pixels
+
+        # Mask: ignore near-black (helps avoid border artifacts)
         gray = cv2.cvtColor(image.image, cv2.COLOR_BGR2GRAY)
-        mask = (gray > 0).astype(np.uint8) * 255
+        mask = (gray > 5).astype(np.uint8) * 255
         warped_mask = cv2.warpPerspective(mask, H, size)
-        
-        # Use distance transform for better weight distribution
-        # This gives higher weights to pixels farther from edges
-        dist_transform = cv2.distanceTransform(warped_mask, cv2.DIST_L2, 5)
-        
-        # Normalize distance transform to [0, 1]
-        if dist_transform.max() > 0:
-            dist_transform = dist_transform / dist_transform.max()
-        
-        # Apply Gaussian blur for smooth feathering (larger kernel = smoother transitions)
-        feather_amount = 51  # Must be odd number
-        dist_transform = cv2.GaussianBlur(dist_transform, (feather_amount, feather_amount), 0)
-        
-        # Create 3-channel weight map
-        image_weights = np.repeat(dist_transform[:, :, np.newaxis], 3, axis=2)
-        
-        # Add small epsilon to avoid division by zero
-        image_weights = image_weights + 1e-10
-        
-        # Accumulate weighted images
-        warped_float = warped.astype(np.float64)
-        panorama_float += warped_float * image_weights
+
+        # Distance transform + normalization
+        dist = cv2.distanceTransform(warped_mask, cv2.DIST_L2, 5)
+        if dist.max() > 0:
+            dist /= dist.max()
+
+        # Heavy feathering
+        if feather_amount > 1:
+            dist = cv2.GaussianBlur(dist, (feather_amount, feather_amount), 0)
+
+        # Emphasize center
+        dist = np.power(dist, weight_power)
+
+        # 3-channel weights
+        image_weights = np.repeat(dist[:, :, np.newaxis], 3, axis=2) + 1e-8
+
+        # Accumulate
+        panorama_float += warped.astype(np.float64) * image_weights
         weights_sum += image_weights
-        
-        logging.info(f"Added image {idx+1}/{len(images)}, weight range: [{image_weights.min():.3f}, {image_weights.max():.3f}]")
 
-    # Normalize by total weights to get final blended result
-    # Avoid division by zero
-    mask = weights_sum > 1e-10
-    panorama_float = np.divide(panorama_float, weights_sum, where=mask, out=np.zeros_like(panorama_float))
-    
-    # Convert back to uint8
+        logging.info(f"Added image {idx+1}/{len(images)}")
+
+    # Initial normalization
+    mask = weights_sum > 1e-6
+    panorama_float[mask] = panorama_float[mask] / weights_sum[mask]
     panorama = np.clip(panorama_float, 0, 255).astype(np.uint8)
-    
-    logging.info(f"Blending complete. Output range: [{panorama.min()}, {panorama.max()}]")
 
+    # === NEW: Low-frequency seam removal (key fix for your images) ===
+    if len(images) > 1:
+        # Heavily blur to extract low-frequency lighting
+        low_freq = cv2.GaussianBlur(panorama.astype(np.float32), (301, 301), 0)
+        
+        # Extract high-frequency details
+        high_freq = panorama.astype(np.float32) - low_freq
+        
+        # Replace low-frequency with a more uniform version (global average lighting)
+        uniform_low = cv2.GaussianBlur(panorama.astype(np.float32), (0, 0), sigmaX=100)  # Stronger        
+        # Recombine: uniform lighting + original sharp details
+        panorama = np.clip(uniform_low + high_freq, 0, 255).astype(np.uint8)
+
+    logging.info("Blending complete with seam correction.")
     return panorama

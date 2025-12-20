@@ -81,9 +81,9 @@ def set_gain_compensations(
         gains[:, channel] = np.linalg.solve(coefs_matrix, res)
 
     # Fix: Find max pixel value across all images properly
-    max_pixel_value = max(float(np.max(image.image)) for image in images)
-    if gains.max() * max_pixel_value > 255:
-        gains = gains / (gains.max() * max_pixel_value) * 255
+        median_gain = np.median(gains[gains > 0])  # Ignore any zero gains
+        if median_gain > 0:
+            gains /= median_gain
 
     for i, image in enumerate(images):
         image.gain = gains[i].astype(np.float32)
