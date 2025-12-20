@@ -7,6 +7,9 @@ import cv2
 import numpy as np
 from typing import Optional, List
 from numpy.typing import NDArray
+from src.sift_implementation import computeKeypointsAndDescriptors
+from src.harris_detector import HarrisCornerDetector
+from src.feature_descriptor import FeatureDescriptor
 
 
 class Image:
@@ -58,7 +61,7 @@ class Image:
         TODO Module 3: Implement custom-from-scratch SIFT descriptors (128D) — replace OpenCV SIFT
         """
         if use_harris:
-            # Module 2: Harris Corner Detection
+            # Module 2: Harris Corner Detection (commented out - using custom implementation)
             keypoints = self._harris_corner_detection()
 
             # Module 3: Still using OpenCV SIFT descriptors for now (TODO: implement custom-from-scratch 128D SIFT descriptor)
@@ -67,10 +70,32 @@ class Image:
 
             self.keypoints = keypoints
             self.features = features
+
+            # Custom Harris Corner Detection
+            # gray = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
+            # harris_detector = HarrisCornerDetector(k=0.04, threshold=0.01, window_size=5, nms_size=5)
+            # keypoints_coords, _ = harris_detector.detect(gray)
+            
+            # Custom Feature Descriptor (HOG-based, 8D)
+            # feature_extractor = FeatureDescriptor(patch_size=16, num_bins=8)
+            # valid_keypoints, features = feature_extractor.compute_descriptors(gray, keypoints_coords)
+            
+            # # Convert to OpenCV KeyPoint format for compatibility with rest of pipeline
+            # self.keypoints = [
+            #     cv2.KeyPoint(float(x), float(y), 16.0)
+            #     for x, y in valid_keypoints
+            # ]
+            # self.features = features
         else:
-            # Original SIFT implementation
-            descriptor = cv2.SIFT_create()  # type: ignore
-            keypoints, features = descriptor.detectAndCompute(self.image, None)
+            # Original SIFT implementation (commented out)
+            # descriptor = cv2.SIFT_create()  # type: ignore
+            # keypoints, features = descriptor.detectAndCompute(self.image, None)
+            # self.keypoints = keypoints
+            # self.features = features
+
+            # Custom SIFT implementation
+            gray = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
+            keypoints, features = computeKeypointsAndDescriptors(gray)
             self.keypoints = keypoints
             self.features = features
 
