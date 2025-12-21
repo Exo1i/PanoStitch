@@ -155,21 +155,23 @@ def add_image(
 
     if panorama is None:
         panorama = np.zeros_like(new_image)
-        weights = np.zeros((new_image.shape[0], new_image.shape[1], 1), dtype=np.float32)
+        weights = np.zeros((new_image.shape[0], new_image.shape[1]), dtype=np.float32)
     else:
         panorama = cv2.warpPerspective(panorama, added_offset, size).astype(np.uint8)
         # weights may be None; if so, initialize it
         if weights is None:
-            weights = np.zeros((panorama.shape[0], panorama.shape[1], 1), dtype=np.float32)
+            weights = np.zeros((panorama.shape[0], panorama.shape[1]), dtype=np.float32)
         else:
-            weights = cv2.warpPerspective(weights, added_offset).astype(np.float32)
+            # Squeeze to 2D if needed, warp, then keep as 2D
+            weights_2d = weights.squeeze() if weights.ndim == 3 else weights
+            weights = cv2.warpPerspective(weights_2d, added_offset, size).astype(np.float32)
 
     # Compute weights efficiently without repeated expansions
     image_weights_2d = single_weights_matrix(
         (int(image.image.shape[0]), int(image.image.shape[1]))
     )
     image_weights = cv2.warpPerspective(image_weights_2d, added_offset @ H, size)
-    image_weights = np.expand_dims(image_weights.astype(np.float32), axis=2)
+    image_weights = image_weights.astype(np.float32)
     
     logging.info(
         f"add_image: image_weights shape {image_weights.shape}, min/max: {image_weights.min()}/{image_weights.max()}"
@@ -179,18 +181,23 @@ def add_image(
     panorama_float = panorama.astype(np.float32)
     new_image_float = new_image.astype(np.float32)
     
-    denom = weights + image_weights
+    # Expand weights to 3D for broadcasting
+    weights_3d = np.expand_dims(weights, axis=2)
+    image_weights_3d = np.expand_dims(image_weights, axis=2)
+    
+    denom = weights_3d + image_weights_3d
     safe_denom = np.where(denom > 0, denom, 1.0)
     
     # Efficient blending: only compute where both images exist or where new image exists
     blended = np.where(
         denom > 0,
-        (panorama_float * weights + new_image_float * image_weights) / safe_denom,
+        (panorama_float * weights_3d + new_image_float * image_weights_3d) / safe_denom,
         np.where(np.sum(new_image_float, axis=2, keepdims=True) > 0, new_image_float, 0)
     )
 
     panorama = np.clip(blended, 0, 255).astype(np.uint8)
     new_weights = denom / np.maximum(denom.max(), 1e-10)
+    new_weights = new_weights.squeeze()  # Return as 2D
     
     logging.info(
         f"add_image: new_weights shape {new_weights.shape}, min/max: {new_weights.min()}/{new_weights.max()}"

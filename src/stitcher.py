@@ -12,7 +12,7 @@ from .image import Image
 from .matching import MultiImageMatches
 from .homography import find_connected_components, build_homographies
 from .gain_compensation import set_gain_compensations
-from .blending import simple_blending
+from .blending import add_image, simple_blending
 
 
 class PanoStitch:
@@ -125,7 +125,21 @@ class PanoStitch:
 
         # Module 8: Blend images
         logging.info("Blending images...")
+        results = []
+        # for component in connected_components:
+        #     panorama = None
+        #     offset = np.eye(3, dtype=np.float64)
+        #     weights = None
+            
+        #     for image in component:
+        #         panorama, offset, weights = add_image(
+        #             panorama, image, offset, weights
+        #         )
+            
+        #     results.append(panorama)
+            
         results = [simple_blending(component) for component in connected_components]
+
 
         logging.info("✓ Stitching complete!")
         return results
