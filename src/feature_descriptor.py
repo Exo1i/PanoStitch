@@ -1,20 +1,17 @@
 """
 Module 3: Feature Description
 Input: Keypoints from feature detection
-Output: Feature descriptor vectors (N × 8 dimensional)
+Output: Feature descriptor vectors (N × 128 dimensional)
 Implementation: From Scratch
 
 Method:
 1. Extract 16×16 pixel patch around each keypoint
-2. Compute gradient magnitude and orientation
-3. Create Histogram of Oriented Gradients (8 bins)
-4. Weight histogram by gradient magnitude
+2. Divide patch into 4×4 cells (4x4 pixels each)
+3. For each cell, compute gradient orientation histogram (8 bins)
+4. Concatenate all histograms (4×4×8 = 128 dimensions)
 5. Normalize descriptor to unit length
 
-Advantages:
-- Invariant to rotation
-- Robust to illumination changes
-- Compact representation
+This produces 128D descriptors similar to SIFT for better matching.
 """
 
 import cv2
@@ -24,19 +21,24 @@ import numpy as np
 class FeatureDescriptor:
     """
     Feature Descriptor using Histogram of Oriented Gradients (HOG).
+    Uses 4x4 spatial cells with 8 orientation bins = 128D descriptor.
     """
     
-    def __init__(self, patch_size=16, num_bins=8):
+    def __init__(self, patch_size=16, num_bins=8, num_cells=4):
         """
         Initialize Feature Descriptor.
         
         Args:
             patch_size (int): Size of the patch to extract around keypoint (default: 16)
             num_bins (int): Number of orientation bins for histogram (default: 8)
+            num_cells (int): Number of cells in each dimension (default: 4, gives 4x4=16 cells)
         """
         self.patch_size = patch_size
         self.num_bins = num_bins
+        self.num_cells = num_cells
+        self.cell_size = patch_size // num_cells
         self.bin_width = 360.0 / num_bins  # degrees per bin
+        self.descriptor_size = num_cells * num_cells * num_bins  # 4*4*8 = 128
     
     def extract_patch(self, image, x, y):
         """
@@ -99,49 +101,53 @@ class FeatureDescriptor:
         
         return magnitude, orientation
     
-    def compute_histogram(self, magnitude, orientation):
+    def compute_cell_histogram(self, magnitude, orientation, cell_y, cell_x):
         """
-        Compute weighted histogram of oriented gradients.
+        Compute weighted histogram for a single cell.
         
         Args:
-            magnitude (np.ndarray): Gradient magnitudes
-            orientation (np.ndarray): Gradient orientations in degrees
+            magnitude (np.ndarray): Gradient magnitudes for entire patch
+            orientation (np.ndarray): Gradient orientations for entire patch
+            cell_y, cell_x (int): Cell indices (0 to num_cells-1)
             
         Returns:
-            np.ndarray: Histogram of oriented gradients (num_bins,)
+            np.ndarray: Histogram for this cell (num_bins,)
         """
+        # Calculate cell boundaries
+        y_start = cell_y * self.cell_size
+        y_end = (cell_y + 1) * self.cell_size
+        x_start = cell_x * self.cell_size
+        x_end = (cell_x + 1) * self.cell_size
+        
+        # Extract cell data
+        cell_mag = magnitude[y_start:y_end, x_start:x_end].flatten()
+        cell_ori = orientation[y_start:y_end, x_start:x_end].flatten()
+        
+        # Compute histogram with linear interpolation
         histogram = np.zeros(self.num_bins, dtype=np.float32)
         
-        # Flatten arrays for easier processing
-        mag_flat = magnitude.flatten()
-        ori_flat = orientation.flatten()
-        
-        # Compute histogram with linear interpolation between bins
-        for i in range(len(mag_flat)):
-            mag = mag_flat[i]
-            ori = ori_flat[i]
+        for i in range(len(cell_mag)):
+            mag = cell_mag[i]
+            ori = cell_ori[i]
             
-            # Find which bin this orientation belongs to
+            # Find bin index
             bin_idx = ori / self.bin_width
             
-            # Linear interpolation between two adjacent bins
+            # Linear interpolation between bins
             bin_lower = int(np.floor(bin_idx)) % self.num_bins
-            bin_upper = int(np.ceil(bin_idx)) % self.num_bins
+            bin_upper = (bin_lower + 1) % self.num_bins
             
-            # Weight for interpolation
             weight_upper = bin_idx - np.floor(bin_idx)
             weight_lower = 1.0 - weight_upper
             
-            # Add weighted magnitude to histogram bins
             histogram[bin_lower] += mag * weight_lower
-            if bin_lower != bin_upper:
-                histogram[bin_upper] += mag * weight_upper
+            histogram[bin_upper] += mag * weight_upper
         
         return histogram
     
     def normalize_descriptor(self, descriptor):
         """
-        Normalize descriptor to unit length.
+        Normalize descriptor to unit length with clipping.
         
         Args:
             descriptor (np.ndarray): Feature descriptor
@@ -153,29 +159,29 @@ class FeatureDescriptor:
         norm = np.linalg.norm(descriptor)
         
         # Avoid division by zero
-        if norm > 0:
+        if norm > 1e-7:
             descriptor = descriptor / norm
         
-        # Clip values to avoid numerical instability (optional)
+        # Clip values to 0.2 (SIFT-style thresholding)
         descriptor = np.clip(descriptor, 0, 0.2)
         
         # Re-normalize after clipping
         norm = np.linalg.norm(descriptor)
-        if norm > 0:
+        if norm > 1e-7:
             descriptor = descriptor / norm
         
         return descriptor
     
     def compute_descriptor(self, image, keypoint):
         """
-        Compute feature descriptor for a single keypoint.
+        Compute 128D feature descriptor for a single keypoint.
         
         Args:
             image (np.ndarray): Grayscale image
             keypoint (tuple): Keypoint coordinates (x, y)
             
         Returns:
-            np.ndarray: Feature descriptor (num_bins,), or None if failed
+            np.ndarray: Feature descriptor (128,), or None if failed
         """
         x, y = keypoint
         
@@ -188,14 +194,24 @@ class FeatureDescriptor:
         if patch.shape[0] != self.patch_size or patch.shape[1] != self.patch_size:
             return None
         
+        # Convert to float if needed
+        if patch.dtype != np.float32:
+            patch = patch.astype(np.float32)
+        
         # Compute gradients
         magnitude, orientation = self.compute_gradients(patch)
         
-        # Compute histogram
-        histogram = self.compute_histogram(magnitude, orientation)
+        # Build descriptor from 4x4 cells
+        descriptor = []
+        for cell_y in range(self.num_cells):
+            for cell_x in range(self.num_cells):
+                histogram = self.compute_cell_histogram(magnitude, orientation, cell_y, cell_x)
+                descriptor.extend(histogram)
+        
+        descriptor = np.array(descriptor, dtype=np.float32)
         
         # Normalize descriptor
-        descriptor = self.normalize_descriptor(histogram)
+        descriptor = self.normalize_descriptor(descriptor)
         
         return descriptor
     
@@ -210,12 +226,12 @@ class FeatureDescriptor:
         Returns:
             tuple: (valid_keypoints, descriptors)
                 - valid_keypoints: List of keypoints with valid descriptors
-                - descriptors: np.ndarray of shape (N, num_bins)
+                - descriptors: np.ndarray of shape (N, 128)
         """
         valid_keypoints = []
         descriptors = []
         
-        print(f"Computing descriptors for {len(keypoints)} keypoints...")
+        print(f"Computing 128D descriptors for {len(keypoints)} keypoints...")
         
         for i, kp in enumerate(keypoints):
             descriptor = self.compute_descriptor(image, kp)
@@ -234,7 +250,7 @@ class FeatureDescriptor:
         else:
             descriptors = np.array([])
         
-        print(f"Successfully computed {len(valid_keypoints)} descriptors")
+        print(f"Successfully computed {len(valid_keypoints)} descriptors ({self.descriptor_size}D)")
         
         return valid_keypoints, descriptors
     
@@ -248,24 +264,29 @@ class FeatureDescriptor:
         Returns:
             np.ndarray: Visualization image
         """
-        # Create a simple bar chart visualization
-        height = 100
-        width = self.num_bins * 20
-        vis = np.ones((height, width, 3), dtype=np.uint8) * 255
+        # Reshape to 4x4 cells x 8 bins
+        desc_reshaped = descriptor.reshape(self.num_cells, self.num_cells, self.num_bins)
         
-        # Normalize descriptor for visualization
-        desc_norm = descriptor / (descriptor.max() + 1e-8)
+        # Create visualization
+        cell_vis_size = 40
+        vis_size = self.num_cells * cell_vis_size
+        vis = np.ones((vis_size, vis_size, 3), dtype=np.uint8) * 255
         
-        # Draw bars
-        bar_width = width // self.num_bins
-        for i in range(self.num_bins):
-            bar_height = int(desc_norm[i] * (height - 10))
-            x1 = i * bar_width
-            x2 = (i + 1) * bar_width - 2
-            y1 = height - bar_height - 5
-            y2 = height - 5
-            
-            cv2.rectangle(vis, (x1, y1), (x2, y2), (0, 128, 255), -1)
+        # Draw each cell's histogram as a small bar chart
+        for cy in range(self.num_cells):
+            for cx in range(self.num_cells):
+                cell_hist = desc_reshaped[cy, cx]
+                cell_hist_norm = cell_hist / (cell_hist.max() + 1e-8)
+                
+                # Draw mini bar chart
+                bar_width = cell_vis_size // self.num_bins
+                for b in range(self.num_bins):
+                    bar_height = int(cell_hist_norm[b] * (cell_vis_size - 4))
+                    x1 = cx * cell_vis_size + b * bar_width
+                    x2 = x1 + bar_width - 1
+                    y2 = (cy + 1) * cell_vis_size - 2
+                    y1 = y2 - bar_height
+                    cv2.rectangle(vis, (x1, y1), (x2, y2), (0, 128, 255), -1)
         
         return vis
 
@@ -287,7 +308,7 @@ if __name__ == "__main__":
     
     # Compute descriptors
     print("\nComputing descriptors...")
-    descriptor = FeatureDescriptor(patch_size=16, num_bins=8)
+    descriptor = FeatureDescriptor(patch_size=16, num_bins=8, num_cells=4)
     valid_keypoints, descriptors = descriptor.compute_descriptors(gray_img, keypoints)
     
     print(f"\nSummary:")
