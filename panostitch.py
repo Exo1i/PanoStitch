@@ -83,7 +83,12 @@ if __name__ == "__main__":
 
     for i, panorama in enumerate(panoramas):
         output_path = output_dir / f"panorama_{i}.jpg"
-        cv2.imwrite(str(output_path), panorama)
-        print(f"✓ Saved: {output_path}")
+        # Ensure proper color handling: panorama is in BGR format from OpenCV
+        # cv2.imwrite expects BGR, so write directly without conversion
+        success = cv2.imwrite(str(output_path), panorama)
+        if success:
+            print(f"✓ Saved: {output_path}")
+        else:
+            print(f"✗ Failed to save: {output_path}")
 
     print(f"\n✓ Created {len(panoramas)} panorama(s)")

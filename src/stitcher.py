@@ -111,11 +111,15 @@ class PanoStitch:
                 sigma_g=self.gain_sigma_g,
             )
 
-        # Apply gain
+        # Apply gain compensation with proper uint8 handling
+        # Convert to float32 first to avoid overflow, apply gain, then convert back safely
         for image in images:
-            image.image = (image.image * image.gain[np.newaxis, np.newaxis, :]).astype(
-                np.uint8
-            )
+            # Convert uint8 to float32 [0, 255]
+            img_float = image.image.astype(np.float32)
+            # Apply gain compensation per channel
+            img_compensated = img_float * image.gain[np.newaxis, np.newaxis, :]
+            # Clip to valid range and convert back to uint8
+            image.image = np.clip(img_compensated, 0, 255).astype(np.uint8)
 
         # Debug: print each image gain summary
         for image in images:
