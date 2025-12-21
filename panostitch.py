@@ -74,12 +74,16 @@ if __name__ == "__main__":
         verbose=True,
     )
 
-    # Stitch images
-    panoramas = stitcher.stitch(image_paths)
+    # Stitch images and get source directory
+    panoramas, source_dir = stitcher.stitch(image_paths)
 
-    # Save results
-    output_dir = Path("results")
-    output_dir.mkdir(exist_ok=True)
+    # Save results inside the source folder
+    if source_dir:
+        output_dir = source_dir
+    else:
+        output_dir = Path("results")
+    
+    output_dir.mkdir(exist_ok=True, parents=True)
 
     for i, panorama in enumerate(panoramas):
         output_path = output_dir / f"panorama_{i}.jpg"
