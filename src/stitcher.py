@@ -48,7 +48,7 @@ class PanoStitch:
         if verbose:
             logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    def stitch(self, image_paths: List[str]) -> List[NDArray[np.uint8]]:
+    def stitch(self, image_paths: List[str]):
         """
         Main stitching pipeline that executes all 8 modules.
 
@@ -65,7 +65,7 @@ class PanoStitch:
             image_paths: List of paths to images
 
         Returns:
-            List of panoramas (one per connected component)
+            Tuple of (List of panoramas, source directory path)
         """
         # Module 1: Load images
         logging.info(f"Loading {len(image_paths)} images...")
@@ -144,6 +144,14 @@ class PanoStitch:
             
         results = [simple_blending(component) for component in connected_components]
 
-
         logging.info("✓ Stitching complete!")
-        return results
+        
+        # Determine source directory
+        from pathlib import Path
+        if image_paths and isinstance(image_paths[0], str):
+            source_dir = Path(image_paths[0]).parent
+            # Check if all images are from the same directory
+            if all(Path(img_path).parent == source_dir for img_path in image_paths):
+                return results, source_dir
+        
+        return results, None
