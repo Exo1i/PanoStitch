@@ -278,6 +278,7 @@ def simple_blending(images: List[Image]) -> NDArray[np.uint8]:
         image_weights = cv2.warpPerspective(image_weights_2d, H, size, borderMode=cv2.BORDER_CONSTANT)
         
         # Convert warped to float32 for accurate blending (avoids intermediate uint8 conversion)
+        # Keep in valid uint8 range [0, 255] during float operations
         warped_float = warped.astype(np.float32)
         
         # Expand weights to 3D and accumulate
@@ -296,7 +297,16 @@ def simple_blending(images: List[Image]) -> NDArray[np.uint8]:
         
         weights_sum += image_weights_3d
 
-    # Convert back to uint8 with clipping
+    # Convert back to uint8 with proper clipping to preserve color range
+    # Ensure values are in valid uint8 range [0, 255]
     panorama = np.clip(panorama_float, 0, 255).astype(np.uint8)
+    
+    # Verify color information is preserved
+    logging.info(
+        f"simple_blending: final panorama shape {panorama.shape}, "
+        f"min/max per channel: B({panorama[:,:,0].min()}/{panorama[:,:,0].max()}), "
+        f"G({panorama[:,:,1].min()}/{panorama[:,:,1].max()}), "
+        f"R({panorama[:,:,2].min()}/{panorama[:,:,2].max()})"
+    )
     
     return panorama
