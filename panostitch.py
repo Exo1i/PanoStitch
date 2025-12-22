@@ -43,38 +43,19 @@ from src.stitcher import PanoStitch
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="PanoStitch - Panoramic Image Stitching Pipeline"
-    )
-    parser.add_argument(
-        "input",
-        nargs="+",
-        help="Image files or directory containing images"
-    )
-    parser.add_argument(
-        "--no-cylindrical",
-        action="store_true",
-        help="Disable cylindrical warping (use standard homography)"
-    )
-    parser.add_argument(
-        "--focal-length", "-f",
-        type=float,
-        default=1200.0,
-        help="Focal length for cylindrical warping (default: 1200.0)"
-    )
-    parser.add_argument(
-        "--resize",
-        type=int,
-        default=800,
-        help="Resize images to this max dimension (default: 800)"
-    )
-    
+    parser = argparse.ArgumentParser(description="PanoStitch - Panoramic Image Stitching Pipeline")
+    parser.add_argument("input", nargs="+", help="Image files or directory containing images")
+    parser.add_argument("--dnn", action="store_true", help="Use DISK+LightGlue deep learning matcher instead of SIFT")
+    parser.add_argument("--harris", action="store_true", help="Use Harris corner detection (only without --dnn)")
+    parser.add_argument("--no-cylindrical", action="store_true", help="Disable cylindrical warping (use standard homography)")
+    parser.add_argument("--focal-length", "-f", type=float, default=1200.0, help="Focal length for cylindrical warping (default: 1200.0)")
+    parser.add_argument("--resize", type=int, default=800, help="Max dimension to resize images (default: 800)")
     args = parser.parse_args()
 
     input_path = Path(args.input[0])
 
     # Check if input is directory or individual files
-    if input_path.is_dir():
+    if len(args.input) == 1 and input_path.is_dir():
         valid_extensions = {".jpg", ".jpeg", ".png", ".bmp"}
         image_paths = [
             str(f) for f in input_path.iterdir() if f.suffix.lower() in valid_extensions
@@ -87,6 +68,9 @@ if __name__ == "__main__":
         sys.exit(1)
 
     print(f"\n=== PanoStitch - Panorama Stitching ===\n")
+    
+    matcher_name = "DISK+LightGlue (DNN)" if args.dnn else ("Harris" if args.harris else "SIFT")
+    print(f"Using matcher: {matcher_name}")
 
     # Create stitcher
     stitcher = PanoStitch(
@@ -94,7 +78,8 @@ if __name__ == "__main__":
         ratio=0.75,
         gain_sigma_n=10.0,
         gain_sigma_g=0.1,
-        use_harris=False,
+        use_harris=args.harris and not args.dnn,
+        use_dnn=args.dnn,
         verbose=True,
         focal_length=args.focal_length,
         use_cylindrical=not args.no_cylindrical,
@@ -111,10 +96,9 @@ if __name__ == "__main__":
     
     output_dir.mkdir(exist_ok=True, parents=True)
 
+    suffix = "_dnn" if args.dnn else ""
     for i, panorama in enumerate(panoramas):
-        output_path = output_dir / f"panorama_{i}.jpg"
-        # Ensure proper color handling: panorama is in BGR format from OpenCV
-        # cv2.imwrite expects BGR, so write directly without conversion
+        output_path = output_dir / f"panorama_{i}{suffix}.jpg"
         success = cv2.imwrite(str(output_path), panorama)
         if success:
             print(f"✓ Saved: {output_path}")
@@ -122,3 +106,4 @@ if __name__ == "__main__":
             print(f"✗ Failed to save: {output_path}")
 
     print(f"\n✓ Created {len(panoramas)} panorama(s)")
+

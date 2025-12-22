@@ -25,6 +25,7 @@ class PanoStitch:
         gain_sigma_n: float = 10.0,
         gain_sigma_g: float = 0.1,
         use_harris: bool = False,
+        use_dnn: bool = False,
         verbose: bool = True,
         focal_length: float = 700.0,
         use_cylindrical: bool = True,
@@ -38,6 +39,7 @@ class PanoStitch:
             gain_sigma_n: Sigma_n for gain compensation
             gain_sigma_g: Sigma_g for gain compensation
             use_harris: Whether to use Harris corner detection (True) or SIFT (False)
+            use_dnn: Whether to use DISK+LightGlue deep learning matcher
             verbose: Whether to print progress
             focal_length: Focal length for cylindrical warping (default 700.0 pixels)
             use_cylindrical: Whether to apply cylindrical warping (default True)
@@ -47,6 +49,7 @@ class PanoStitch:
         self.gain_sigma_n = gain_sigma_n
         self.gain_sigma_g = gain_sigma_g
         self.use_harris = use_harris
+        self.use_dnn = use_dnn
         self.verbose = verbose
         self.focal_length = focal_length
         self.use_cylindrical = use_cylindrical
@@ -78,6 +81,12 @@ class PanoStitch:
         images = [Image(path, self.resize_size) for path in image_paths]
 
         # Apply cylindrical warping before feature detection (optional)
+        # Note: DeepMatcher reads directly from disk, so it doesn't see in-memory warping.
+        # We must disable cylindrical warping if using DNN to ensure coordinate consistency.
+        if self.use_dnn and self.use_cylindrical:
+            logging.warning("Warning: Cylindrical warping is incompatible with Deep Matcher (reads from disk). Disabling cylindrical warping.")
+            self.use_cylindrical = False
+
         if self.use_cylindrical:
             from .warping import cylindrical_warp
             logging.info(f"Applying cylindrical warping (focal_length={self.focal_length})...")
@@ -85,14 +94,19 @@ class PanoStitch:
                 image.image = cylindrical_warp(image.image, self.focal_length)
 
         # Module 2 & 3: Compute features
-        detector_name = "Harris" if self.use_harris else "SIFT"
-        logging.info(f"Computing features using {detector_name}...")
-        for image in images:
-            image.compute_features(use_harris=self.use_harris)
+        # If using DNN, we skip SIFT/Harris feature detection here as DeepMatcher handles it internally
+        if not self.use_dnn:
+            detector_name = "Harris" if self.use_harris else "SIFT"
+            logging.info(f"Computing features using {detector_name}...")
+            for image in images:
+                image.compute_features(use_harris=self.use_harris)
 
         # Module 4: Match images
-        logging.info("Matching images...")
-        matcher = MultiImageMatches(images, ratio=self.ratio)
+        if self.use_dnn:
+            logging.info("Matching images using DISK+LightGlue...")
+        else:
+            logging.info("Matching images...")
+        matcher = MultiImageMatches(images, ratio=self.ratio, use_dnn=self.use_dnn)
         pair_matches = matcher.get_pair_matches()
         pair_matches.sort(key=lambda pm: len(pm.matches), reverse=True)
 
