@@ -132,7 +132,7 @@ def add_image(
     weights: Optional[NDArray[np.float32]],
 ) -> Tuple[NDArray[np.uint8], NDArray[np.float64], NDArray[np.float32]]:
     """
-    Module 8: Add a new image to panorama with blending (memory-optimized).
+    Module 8: Add a new image to panorama with blending.
 
     Args:
         panorama: Existing panorama
@@ -210,7 +210,7 @@ def add_image(
 
 def simple_blending(images: List[Image]) -> NDArray[np.uint8]:
     """
-    Module 8: Build a panorama using simple blending (memory-optimized).
+    Module 8: Build a panorama using simple blending.
     
     Handles cylindrical warping black borders by using pixel validity masks.
 

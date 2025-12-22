@@ -44,11 +44,11 @@ class PairMatch:
         """
         Module 5: Compute homography between the two images.
 
-        TODO: Replace with custom implementation:
-        - Implement Direct Linear Transform (DLT)
-        - Implement RANSAC algorithm
+        Uses:
+        - Direct Linear Transform (DLT)
+        - RANSAC algorithm
 
-        Current: Uses OpenCV's findHomography
+        Arguments are passed to the homography estimator.
 
         Args:
             ransac_reproj_thresh: reprojection threshold for RANSAC
@@ -184,11 +184,12 @@ class MultiImageMatches:
     """
     Module 4: Handles feature matching between multiple images.
 
-    TODO: Replace compute_matches() with custom implementation:
-    - Implement brute-force descriptor matching
-    - Compute pairwise Euclidean distances
-    - Apply k-NN search (k=2)
-    - Apply Lowe's ratio test
+    Implementation:
+    - Brute-force descriptor matching (custom vectorized or OpenCV)
+    - Pairwise Euclidean distances
+    - k-NN search (k=2)
+    - Lowe's ratio test
+    - Optional: Deep Learning matching (DISK+LightGlue)
     """
 
     def __init__(self, images: List[Image], ratio: float = 0.75, use_dnn: bool = False) -> None:

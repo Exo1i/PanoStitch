@@ -7,9 +7,6 @@ from numpy.typing import NDArray
 
 from .image import Image
 
-############################WARPING#####################
-#########################################################
-
 def create_translation_matrix(tx, ty):
     """
     Create a 3x3 translation matrix.

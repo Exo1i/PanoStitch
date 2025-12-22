@@ -1,37 +1,6 @@
 """
 PanoStitch - Panoramic Image Stitching Pipeline
 A modular implementation for creating panoramas from multiple overlapping images.
-
-Project Structure:
-======================
-
-src/
-├── image.py              - Module 1: Image loading and storage
-│                          - Module 2: Harris Corner Detection (TODO)
-│                          - Module 3: Feature Descriptors (TODO)
-│
-├── matching.py           - Module 4: Feature Matching (TODO)
-│                          - Implement brute-force matching
-│                          - Implement Lowe's ratio test
-│
-├── homography.py         - Module 5 & 6: Homography Estimation and Panorama Assembly (TODO)
-│                          - Implement DLT (Direct Linear Transform)
-│                          - Implement RANSAC
-│
-├── gain_compensation.py  - Module 7: Gain Compensation
-│                          - Balance exposure across images
-│
-├── blending.py           - Module 8: Image Blending
-│                          - Combine images into final panorama
-│
-└── stitcher.py          - Main pipeline coordinator
-
-Usage:
-======
-python panostitch.py <image1> <image2> [image3] ...
-python panostitch.py <directory>
-
-Each module has TODO comments indicating what needs to be replaced with custom implementations.
 """
 
 import cv2
