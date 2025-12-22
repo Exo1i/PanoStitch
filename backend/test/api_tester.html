@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PanoStitch API Tester</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 20px;
+      }
+
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 10px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        overflow: hidden;
+      }
+
+      .header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 40px;
+        text-align: center;
+      }
+
+      .header h1 {
+        font-size: 32px;
+        margin-bottom: 10px;
+      }
+
+      .header p {
+        font-size: 14px;
+        opacity: 0.9;
+      }
+
+      .content {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 30px;
+        padding: 40px;
+      }
+
+      @media (max-width: 768px) {
+        .content {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .section {
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 25px;
+        background: #f9f9f9;
+      }
+
+      .section h2 {
+        color: #333;
+        margin-bottom: 20px;
+        font-size: 20px;
+        border-bottom: 2px solid #667eea;
+        padding-bottom: 10px;
+      }
+
+      .form-group {
+        margin-bottom: 20px;
+      }
+
+      label {
+        display: block;
+        color: #555;
+        font-weight: 600;
+        margin-bottom: 8px;
+        font-size: 14px;
+      }
+
+      input[type="file"],
+      input[type="text"],
+      input[type="number"],
+      select {
+        width: 100%;
+        padding: 10px 15px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        font-size: 14px;
+        transition: border-color 0.3s;
+      }
+
+      input[type="file"]:focus,
+      input[type="text"]:focus,
+      input[type="number"]:focus,
+      select:focus {
+        outline: none;
+        border-color: #667eea;
+        box-shadow: 0 0 5px rgba(102, 126, 234, 0.3);
+      }
+
+      .checkbox-group {
+        display: flex;
+        gap: 20px;
+        flex-wrap: wrap;
+      }
+
+      .checkbox-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      input[type="checkbox"] {
+        cursor: pointer;
+        width: 18px;
+        height: 18px;
+      }
+
+      .checkbox-item label {
+        margin: 0;
+        cursor: pointer;
+        font-weight: normal;
+      }
+
+      button {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 12px 30px;
+        border: none;
+        border-radius: 5px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.2s, box-shadow 0.2s;
+        width: 100%;
+      }
+
+      button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+      }
+
+      button:active {
+        transform: translateY(0);
+      }
+
+      .status {
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+        display: none;
+      }
+
+      .status.success {
+        background: #d4edda;
+        border: 1px solid #c3e6cb;
+        color: #155724;
+        display: block;
+      }
+
+      .status.error {
+        background: #f8d7da;
+        border: 1px solid #f5c6cb;
+        color: #721c24;
+        display: block;
+      }
+
+      .status.info {
+        background: #d1ecf1;
+        border: 1px solid #bee5eb;
+        color: #0c5460;
+        display: block;
+      }
+
+      .results {
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        padding: 15px;
+        background: white;
+        max-height: 400px;
+        overflow-y: auto;
+      }
+
+      .result-item {
+        padding: 10px;
+        margin-bottom: 10px;
+        background: #f5f5f5;
+        border-radius: 5px;
+        border-left: 4px solid #667eea;
+      }
+
+      .result-item strong {
+        color: #333;
+      }
+
+      .result-item p {
+        margin: 5px 0 0 0;
+        font-size: 13px;
+        color: #666;
+      }
+
+      .link {
+        color: #667eea;
+        text-decoration: none;
+        cursor: pointer;
+      }
+
+      .link:hover {
+        text-decoration: underline;
+      }
+
+      .preview {
+        margin-top: 20px;
+      }
+
+      .preview img {
+        max-width: 100%;
+        height: auto;
+        border-radius: 5px;
+        border: 1px solid #ddd;
+      }
+
+      .loading {
+        display: none;
+        text-align: center;
+        color: #667eea;
+        padding: 20px;
+      }
+
+      .spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #667eea;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 10px;
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+
+      .file-list {
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        padding: 10px;
+        margin-top: 10px;
+        font-size: 13px;
+      }
+
+      .file-item {
+        padding: 5px;
+        border-bottom: 1px solid #eee;
+      }
+
+      .file-item:last-child {
+        border-bottom: none;
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 15px;
+        margin-bottom: 20px;
+      }
+
+      .stat-box {
+        background: white;
+        padding: 15px;
+        border-radius: 5px;
+        border: 1px solid #ddd;
+        text-align: center;
+      }
+
+      .stat-box .value {
+        font-size: 24px;
+        font-weight: bold;
+        color: #667eea;
+      }
+
+      .stat-box .label {
+        font-size: 12px;
+        color: #999;
+        margin-top: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>🖼️ PanoStitch API Tester</h1>
+        <p>Upload images and create stunning panoramas in real-time</p>
+      </div>
+
+      <div class="content">
+        <!-- Upload Section -->
+        <div class="section">
+          <h2>📤 Upload & Stitch</h2>
+
+          <div id="statusMessage" class="status"></div>
+
+          <div class="form-group">
+            <label for="imageInput">Select Images (minimum 2)</label>
+            <input type="file" id="imageInput" multiple accept="image/*" />
+            <div class="file-list" id="fileList" style="display: none"></div>
+          </div>
+
+          <div class="form-group">
+            <label for="matcherSelect">Matcher Algorithm</label>
+            <select id="matcherSelect">
+              <option value="sift">SIFT (Default - Balanced)</option>
+              <option value="harris">Harris (Faster)</option>
+              <option value="dnn">
+                DISK+LightGlue (Deep Learning - Accurate)
+              </option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="focalLength">Focal Length (pixels)</label>
+            <input
+              type="number"
+              id="focalLength"
+              value="1200.0"
+              step="0.1"
+              min="100"
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="resize">Max Image Dimension (pixels)</label>
+            <input type="number" id="resize" value="800" step="100" min="100" />
+          </div>
+
+          <button onclick="stitchImages()">Start Stitching</button>
+
+          <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Processing images... This may take a few minutes</p>
+          </div>
+        </div>
+
+        <!-- Results Section -->
+        <div class="section">
+          <h2>📊 Results</h2>
+
+          <div class="stats" id="stats" style="display: none">
+            <div class="stat-box">
+              <div class="label">Session ID</div>
+              <div
+                class="value"
+                id="sessionId"
+                style="font-size: 14px; word-break: break-all"
+              >
+                -
+              </div>
+            </div>
+            <div class="stat-box">
+              <div class="label">Panoramas Created</div>
+              <div class="value" id="panoramaCount">0</div>
+            </div>
+          </div>
+
+          <div id="resultsList"></div>
+
+          <div class="preview" id="preview" style="display: none">
+            <h3 style="margin-bottom: 10px; color: #333">Preview</h3>
+            <img id="previewImage" src="" alt="Panorama Preview" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const API_BASE_URL = "http://localhost:5000/api";
+
+      // Update file list when files are selected
+      document
+        .getElementById("imageInput")
+        .addEventListener("change", function (e) {
+          const fileList = document.getElementById("fileList");
+          const files = Array.from(e.target.files);
+
+          if (files.length === 0) {
+            fileList.style.display = "none";
+            return;
+          }
+
+          let html = "<strong>Selected Files:</strong>";
+          files.forEach((file, index) => {
+            html += `<div class="file-item">📄 ${file.name} (${(
+              file.size /
+              1024 /
+              1024
+            ).toFixed(2)} MB)</div>`;
+          });
+
+          fileList.innerHTML = html;
+          fileList.style.display = "block";
+        });
+
+      function showStatus(message, type = "info") {
+        const statusEl = document.getElementById("statusMessage");
+        statusEl.textContent = message;
+        statusEl.className = `status ${type}`;
+        setTimeout(() => {
+          if (type !== "error") {
+            statusEl.className = "status";
+          }
+        }, 5000);
+      }
+
+      function stitchImages() {
+        const imageInput = document.getElementById("imageInput");
+        const files = imageInput.files;
+
+        // Validation
+        if (files.length < 2) {
+          showStatus("Please select at least 2 images", "error");
+          return;
+        }
+
+        // Prepare form data
+        const formData = new FormData();
+
+        for (let i = 0; i < files.length; i++) {
+          formData.append("files", files[i]);
+        }
+
+        // Get parameters with null safety
+        const matcherSelect = document.getElementById("matcherSelect");
+        const focalLengthInput = document.getElementById("focalLength");
+        const resizeInput = document.getElementById("resize");
+        const cylindricalCheckbox = document.getElementById("cylindrical");
+
+        const matcher = matcherSelect ? matcherSelect.value : "sift";
+        const focalLength = focalLengthInput
+          ? focalLengthInput.value
+          : "1200.0";
+        const resize = resizeInput ? resizeInput.value : "800";
+        const cylindrical = cylindricalCheckbox
+          ? cylindricalCheckbox.checked
+          : true;
+
+        formData.append("use_dnn", matcher === "dnn" ? "true" : "false");
+        formData.append("use_harris", matcher === "harris" ? "true" : "false");
+        formData.append("use_cylindrical", cylindrical ? "true" : "false");
+        formData.append("focal_length", focalLength);
+        formData.append("resize", resize);
+
+        // Show loading
+        const loadingEl = document.getElementById("loading");
+        const resultsEl = document.getElementById("resultsList");
+        const previewEl = document.getElementById("preview");
+
+        if (loadingEl) loadingEl.style.display = "block";
+        if (resultsEl) resultsEl.innerHTML = "";
+        if (previewEl) previewEl.style.display = "none";
+
+        // Send request with extended timeout (15 minutes for large images)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 900000); // 15 minutes
+
+        fetch(`${API_BASE_URL}/stitch`, {
+          method: "POST",
+          body: formData,
+          signal: controller.signal,
+        })
+          .then((response) => {
+            clearTimeout(timeoutId);
+            if (!response.ok) {
+              return response.json().then((data) => {
+                throw new Error(data.message || "Stitching failed");
+              });
+            }
+            return response.json();
+          })
+          .then((data) => {
+            const loadingEl = document.getElementById("loading");
+            if (loadingEl) loadingEl.style.display = "none";
+            showStatus("✓ Stitching successful!", "success");
+
+            // Display results
+            displayResults(data);
+          })
+          .catch((error) => {
+            clearTimeout(timeoutId);
+            const loadingEl = document.getElementById("loading");
+            if (loadingEl) loadingEl.style.display = "none";
+            showStatus(`✗ Error: ${error.message}`, "error");
+            console.error("Error:", error);
+          });
+      }
+
+      function displayResults(data) {
+        // Show stats
+        const statsEl = document.getElementById("stats");
+        const sessionIdEl = document.getElementById("sessionId");
+        const panoramaCountEl = document.getElementById("panoramaCount");
+        const resultsListEl = document.getElementById("resultsList");
+
+        if (statsEl) statsEl.style.display = "grid";
+        if (sessionIdEl) sessionIdEl.textContent = data.session_id;
+        if (panoramaCountEl) panoramaCountEl.textContent = data.panoramas_count;
+
+        // Show results
+        let html =
+          '<h3 style="margin-bottom: 15px; color: #333;">Generated Panoramas</h3>';
+
+        data.panoramas.forEach((panorama) => {
+          html += `
+                    <div class="result-item">
+                        <strong>Panorama ${panorama.id}</strong>
+                        <p>📏 Dimensions: ${panorama.shape[1]} × ${panorama.shape[0]} pixels</p>
+                        <p>📁 File: ${panorama.filename}</p>
+                        <p>
+                            <a class="link" onclick="downloadResult('${data.session_id}', '${panorama.filename}')">⬇️ Download</a>
+                            &nbsp;|&nbsp;
+                            <a class="link" onclick="showPreview('${data.session_id}', '${panorama.filename}')">👁️ Preview</a>
+                        </p>
+                    </div>
+                `;
+        });
+
+        if (resultsListEl) resultsListEl.innerHTML = html;
+      }
+
+      function downloadResult(sessionId, filename) {
+        const url = `${API_BASE_URL}/stitch/result/${sessionId}/${filename}`;
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        link.click();
+      }
+
+      function showPreview(sessionId, filename) {
+        const url = `${API_BASE_URL}/stitch/preview/${sessionId}/${filename}`;
+        const previewEl = document.getElementById("preview");
+        const imageEl = document.getElementById("previewImage");
+
+        if (imageEl) imageEl.src = url;
+        if (previewEl) previewEl.style.display = "block";
+
+        // Scroll to preview
+        if (previewEl)
+          previewEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+
+      // Check API health on load
+      window.addEventListener("load", function () {
+        fetch(`${API_BASE_URL}/health`)
+          .then((response) => response.json())
+          .then((data) => {
+            showStatus(`✓ API is healthy and ready`, "success");
+          })
+          .catch((error) => {
+            showStatus(
+              `✗ Cannot connect to API. Make sure the server is running on http://localhost:5000`,
+              "error"
+            );
+            console.error("API error:", error);
+          });
+      });
+    </script>
+  </body>
+</html>
