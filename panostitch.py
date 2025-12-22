@@ -72,6 +72,7 @@ if __name__ == "__main__":
         gain_sigma_g=0.1,
         use_harris=False,  # Use Harris corner detection instead of SIFT
         verbose=True,
+        focal_length=1200.0,  # Focal length for cylindrical warping
     )
 
     # Stitch images and get source directory

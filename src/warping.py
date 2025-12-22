@@ -197,3 +197,52 @@ def warp_image(source, H, reference_shape, use_opencv=True):
         warped = warp_image_from_scratch(source, H_adjusted, canvas_size)
     
     return warped, offset
+
+
+def cylindrical_warp(image: NDArray[np.uint8], focal_length: float) -> NDArray[np.uint8]:
+    """
+    Apply cylindrical warping to an image before homography estimation.
+    
+    This projects the image onto a cylindrical surface, which is useful for
+    panoramas taken with a rotating camera. After cylindrical projection,
+    the motion between images becomes approximately translational.
+    
+    Formulas (inverse mapping for interpolation):
+        x_src = f * tan((x_dst - cx) / f) + cx
+        y_src = (y_dst - cy) / cos((x_dst - cx) / f) + cy
+    
+    Where:
+        f = focal length in pixels
+        (cx, cy) = image center
+    
+    Args:
+        image: Input image (H, W, 3) or (H, W), dtype uint8
+        focal_length: Focal length in pixels. Common values: 500-1000 for typical photos.
+        
+    Returns:
+        Warped image with same shape and dtype as input.
+    """
+    h, w = image.shape[:2]
+    cx, cy = w / 2.0, h / 2.0
+    
+    # Create coordinate grids for the destination image
+    y_dst, x_dst = np.indices((h, w), dtype=np.float32)
+    
+    # Compute the angle theta for each x coordinate
+    theta = (x_dst - cx) / focal_length
+    
+    # Inverse mapping: compute source coordinates
+    x_src = focal_length * np.tan(theta) + cx
+    y_src = (y_dst - cy) / np.cos(theta) + cy
+    
+    # Use OpenCV remap for efficient bilinear interpolation
+    warped = cv2.remap(
+        image,
+        x_src.astype(np.float32),
+        y_src.astype(np.float32),
+        interpolation=cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_CONSTANT,
+        borderValue=0
+    )
+    
+    return warped
