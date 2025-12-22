@@ -36,18 +36,42 @@ Each module has TODO comments indicating what needs to be replaced with custom i
 
 import cv2
 import sys
+import argparse
 from pathlib import Path
 
 from src.stitcher import PanoStitch
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python panostitch.py <image1> <image2> [image3] ...")
-        print("   or: python panostitch.py <directory>")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        description="PanoStitch - Panoramic Image Stitching Pipeline"
+    )
+    parser.add_argument(
+        "input",
+        nargs="+",
+        help="Image files or directory containing images"
+    )
+    parser.add_argument(
+        "--no-cylindrical",
+        action="store_true",
+        help="Disable cylindrical warping (use standard homography)"
+    )
+    parser.add_argument(
+        "--focal-length", "-f",
+        type=float,
+        default=1200.0,
+        help="Focal length for cylindrical warping (default: 1200.0)"
+    )
+    parser.add_argument(
+        "--resize",
+        type=int,
+        default=800,
+        help="Resize images to this max dimension (default: 800)"
+    )
+    
+    args = parser.parse_args()
 
-    input_path = Path(sys.argv[1])
+    input_path = Path(args.input[0])
 
     # Check if input is directory or individual files
     if input_path.is_dir():
@@ -56,7 +80,7 @@ if __name__ == "__main__":
             str(f) for f in input_path.iterdir() if f.suffix.lower() in valid_extensions
         ]
     else:
-        image_paths = sys.argv[1:]
+        image_paths = args.input
 
     if not image_paths:
         print("Error: No valid images found!")
@@ -66,13 +90,14 @@ if __name__ == "__main__":
 
     # Create stitcher
     stitcher = PanoStitch(
-        resize_size=800,  # Resize images to reduce memory usage and canvas size
+        resize_size=args.resize,
         ratio=0.75,
         gain_sigma_n=10.0,
         gain_sigma_g=0.1,
-        use_harris=False,  # Use Harris corner detection instead of SIFT
+        use_harris=False,
         verbose=True,
-        focal_length=1200.0,  # Focal length for cylindrical warping
+        focal_length=args.focal_length,
+        use_cylindrical=not args.no_cylindrical,
     )
 
     # Stitch images and get source directory
