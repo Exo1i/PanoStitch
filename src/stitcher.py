@@ -25,6 +25,7 @@ class PanoStitch:
         gain_sigma_n: float = 10.0,
         gain_sigma_g: float = 0.1,
         use_harris: bool = False,
+        use_dnn: bool = False,
         verbose: bool = True,
     ):
         """
@@ -36,6 +37,7 @@ class PanoStitch:
             gain_sigma_n: Sigma_n for gain compensation
             gain_sigma_g: Sigma_g for gain compensation
             use_harris: Whether to use Harris corner detection (True) or SIFT (False)
+            use_dnn: Whether to use DISK+LightGlue deep learning matcher
             verbose: Whether to print progress
         """
         self.resize_size = resize_size
@@ -43,6 +45,7 @@ class PanoStitch:
         self.gain_sigma_n = gain_sigma_n
         self.gain_sigma_g = gain_sigma_g
         self.use_harris = use_harris
+        self.use_dnn = use_dnn
         self.verbose = verbose
 
         if verbose:
@@ -71,15 +74,19 @@ class PanoStitch:
         logging.info(f"Loading {len(image_paths)} images...")
         images = [Image(path, self.resize_size) for path in image_paths]
 
-        # Module 2 & 3: Compute features
-        detector_name = "Harris" if self.use_harris else "SIFT"
-        logging.info(f"Computing features using {detector_name}...")
-        for image in images:
-            image.compute_features(use_harris=self.use_harris)
+        # Module 2 & 3: Compute features (skip if using DNN - it extracts internally)
+        if not self.use_dnn:
+            detector_name = "Harris" if self.use_harris else "SIFT"
+            logging.info(f"Computing features using {detector_name}...")
+            for image in images:
+                image.compute_features(use_harris=self.use_harris)
 
         # Module 4: Match images
-        logging.info("Matching images...")
-        matcher = MultiImageMatches(images, ratio=self.ratio)
+        if self.use_dnn:
+            logging.info("Matching images using DISK+LightGlue...")
+        else:
+            logging.info("Matching images...")
+        matcher = MultiImageMatches(images, ratio=self.ratio, use_dnn=self.use_dnn)
         pair_matches = matcher.get_pair_matches()
         pair_matches.sort(key=lambda pm: len(pm.matches), reverse=True)
 

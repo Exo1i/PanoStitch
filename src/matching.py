@@ -191,19 +191,26 @@ class MultiImageMatches:
     - Apply Lowe's ratio test
     """
 
-    def __init__(self, images: List[Image], ratio: float = 0.75) -> None:
+    def __init__(self, images: List[Image], ratio: float = 0.75, use_dnn: bool = False) -> None:
         """
         Create a new MultiImageMatches object.
 
         Args:
             images: images to compare
             ratio: ratio for Lowe's ratio test
+            use_dnn: use DISK+LightGlue deep learning matcher
         """
         self.images = images
         self.matches: dict[str, dict[str, List[cv2.DMatch]]] = {
             image.path: {} for image in images
         }
         self.ratio = ratio
+        self.use_dnn = use_dnn
+        self.deep_matcher = None
+        
+        if use_dnn:
+            from deep_matcher import DeepMatcher
+            self.deep_matcher = DeepMatcher(method="disk+lightglue")
 
     def get_matches(self, image_a: Image, image_b: Image) -> List[cv2.DMatch]:
         """Get matches for the given images."""
@@ -242,13 +249,7 @@ class MultiImageMatches:
 
     def compute_matches(self, image_a: Image, image_b: Image) -> List[cv2.DMatch]:
         """
-        Module 4: Compute matches between two images using Lowe's ratio test.
-
-        TODO: Replace with custom implementation:
-        - Implement brute-force descriptor matching
-        - Compute pairwise Euclidean distances
-        - Apply k-NN search (k=2)
-        - Apply Lowe's ratio test
+        Module 4: Compute matches between two images.
 
         Args:
             image_a: First image
@@ -257,17 +258,79 @@ class MultiImageMatches:
         Returns:
             List of valid matches
         """
+        if self.use_dnn and self.deep_matcher is not None:
+            return self._compute_dnn_matches(image_a, image_b)
+        else:
+            return self._compute_sift_matches(image_a, image_b)
+
+    def _compute_dnn_matches(self, image_a: Image, image_b: Image) -> List[cv2.DMatch]:
+        """Compute matches using DISK+LightGlue."""
+        import cv2 as cv
+        
+        # Get original image dimensions before DeepMatcher resizing
+        orig_img_a = cv.imread(image_a.path)
+        orig_img_b = cv.imread(image_b.path)
+        
+        if orig_img_a is None or orig_img_b is None:
+            return []
+            
+        orig_h_a, orig_w_a = orig_img_a.shape[:2]
+        orig_h_b, orig_w_b = orig_img_b.shape[:2]
+        
+        # Get the loaded image dimensions (after pipeline resize)
+        loaded_h_a, loaded_w_a = image_a.image.shape[:2]
+        loaded_h_b, loaded_w_b = image_b.image.shape[:2]
+        
+        # DeepMatcher resizes to max_size=1024, compute what it would resize to
+        max_size = self.deep_matcher.max_size
+        
+        if max(orig_h_a, orig_w_a) > max_size:
+            scale_a_dnn = max_size / max(orig_h_a, orig_w_a)
+            dnn_h_a = int(orig_h_a * scale_a_dnn)
+            dnn_w_a = int(orig_w_a * scale_a_dnn)
+        else:
+            dnn_h_a, dnn_w_a = orig_h_a, orig_w_a
+            
+        if max(orig_h_b, orig_w_b) > max_size:
+            scale_b_dnn = max_size / max(orig_h_b, orig_w_b)
+            dnn_h_b = int(orig_h_b * scale_b_dnn)
+            dnn_w_b = int(orig_w_b * scale_b_dnn)
+        else:
+            dnn_h_b, dnn_w_b = orig_h_b, orig_w_b
+        
+        # Get matches from DeepMatcher (in DNN-resized coordinate space)
+        mkpts0, mkpts1 = self.deep_matcher.match(image_a.path, image_b.path)
+        
+        if len(mkpts0) == 0:
+            return []
+        
+        # Scale keypoints from DNN space to loaded image space
+        scale_x_a = loaded_w_a / dnn_w_a
+        scale_y_a = loaded_h_a / dnn_h_a
+        scale_x_b = loaded_w_b / dnn_w_b
+        scale_y_b = loaded_h_b / dnn_h_b
+        
+        # Convert matched keypoints to cv2.KeyPoint and store in images
+        image_a.keypoints = [cv.KeyPoint(x=pt[0] * scale_x_a, y=pt[1] * scale_y_a, size=1) for pt in mkpts0]
+        image_b.keypoints = [cv.KeyPoint(x=pt[0] * scale_x_b, y=pt[1] * scale_y_b, size=1) for pt in mkpts1]
+        
+        # Create DMatch objects (1:1 mapping since DeepMatcher returns correspondences)
+        matches = [cv.DMatch(_queryIdx=i, _trainIdx=i, _distance=0) for i in range(len(mkpts0))]
+        
+        return matches
+
+    def _compute_sift_matches(self, image_a: Image, image_b: Image) -> List[cv2.DMatch]:
+        """Compute matches using SIFT + BruteForce."""
         if image_a.features is None or image_b.features is None:
             return []
 
-        # Current: Using OpenCV's BruteForce matcher
         matcher = cv2.DescriptorMatcher_create("BruteForce")  # type: ignore
         raw_matches = matcher.knnMatch(image_a.features, image_b.features, 2)
         matches: List[cv2.DMatch] = []
 
         for m, n in raw_matches:
-            # Lowe's ratio test
             if m.distance < n.distance * self.ratio:
                 matches.append(m)
 
         return matches
+
