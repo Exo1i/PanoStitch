@@ -27,6 +27,7 @@ class PanoStitch:
         use_harris: bool = False,
         verbose: bool = True,
         focal_length: float = 700.0,
+        use_cylindrical: bool = True,
     ):
         """
         Initialize PanoStitch.
@@ -39,6 +40,7 @@ class PanoStitch:
             use_harris: Whether to use Harris corner detection (True) or SIFT (False)
             verbose: Whether to print progress
             focal_length: Focal length for cylindrical warping (default 700.0 pixels)
+            use_cylindrical: Whether to apply cylindrical warping (default True)
         """
         self.resize_size = resize_size
         self.ratio = ratio
@@ -47,6 +49,7 @@ class PanoStitch:
         self.use_harris = use_harris
         self.verbose = verbose
         self.focal_length = focal_length
+        self.use_cylindrical = use_cylindrical
 
         if verbose:
             logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -74,11 +77,12 @@ class PanoStitch:
         logging.info(f"Loading {len(image_paths)} images...")
         images = [Image(path, self.resize_size) for path in image_paths]
 
-        # Apply cylindrical warping before feature detection
-        from .warping import cylindrical_warp
-        logging.info(f"Applying cylindrical warping (focal_length={self.focal_length})...")
-        for image in images:
-            image.image = cylindrical_warp(image.image, self.focal_length)
+        # Apply cylindrical warping before feature detection (optional)
+        if self.use_cylindrical:
+            from .warping import cylindrical_warp
+            logging.info(f"Applying cylindrical warping (focal_length={self.focal_length})...")
+            for image in images:
+                image.image = cylindrical_warp(image.image, self.focal_length)
 
         # Module 2 & 3: Compute features
         detector_name = "Harris" if self.use_harris else "SIFT"
