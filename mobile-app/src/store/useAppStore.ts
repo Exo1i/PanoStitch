@@ -37,7 +37,7 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
-  apiBaseUrl: 'http://localhost:5000/api', 
+  apiBaseUrl: 'http://127.0.0.1:5000/api', // Use with: adb reverse tcp:5000 tcp:5000
   settings: {
     use_dnn: false,
     use_harris: false,

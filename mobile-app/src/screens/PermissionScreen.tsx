@@ -70,7 +70,7 @@ export default function PermissionScreen() {
         </View>
         <View style={styles.featureItem}>
           <Ionicons name="git-merge-outline" size={20} color={colors.accent} />
-          <Text style={styles.featureText}>AI-powered stitching</Text>
+          <Text style={styles.featureText}>Smart stitching</Text>
         </View>
         <View style={styles.featureItem}>
           <Ionicons name="compass-outline" size={20} color={colors.accent} />
