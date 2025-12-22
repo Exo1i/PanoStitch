@@ -6,7 +6,7 @@ import torch
 import numpy as np
 import argparse
 from pathlib import Path
-from deep_matcher import DeepMatcher
+from src.deep_matcher import DeepMatcher
 
 # Standard SIFT Baseline
 class SIFTMatcher:

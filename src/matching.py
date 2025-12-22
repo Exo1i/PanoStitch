@@ -210,7 +210,7 @@ class MultiImageMatches:
         self.deep_matcher = None
         
         if use_dnn:
-            from deep_matcher import DeepMatcher
+            from .deep_matcher import DeepMatcher
             self.deep_matcher = DeepMatcher(method="disk+lightglue")
 
     def get_matches(self, image_a: Image, image_b: Image) -> List[cv2.DMatch]:
