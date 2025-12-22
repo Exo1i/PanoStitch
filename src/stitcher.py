@@ -26,6 +26,7 @@ class PanoStitch:
         gain_sigma_g: float = 0.1,
         use_harris: bool = False,
         verbose: bool = True,
+        focal_length: float = 700.0,
     ):
         """
         Initialize PanoStitch.
@@ -37,6 +38,7 @@ class PanoStitch:
             gain_sigma_g: Sigma_g for gain compensation
             use_harris: Whether to use Harris corner detection (True) or SIFT (False)
             verbose: Whether to print progress
+            focal_length: Focal length for cylindrical warping (default 700.0 pixels)
         """
         self.resize_size = resize_size
         self.ratio = ratio
@@ -44,6 +46,7 @@ class PanoStitch:
         self.gain_sigma_g = gain_sigma_g
         self.use_harris = use_harris
         self.verbose = verbose
+        self.focal_length = focal_length
 
         if verbose:
             logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -53,7 +56,7 @@ class PanoStitch:
         Main stitching pipeline that executes all 8 modules.
 
         Pipeline:
-        1. Load images
+        1. Load images and apply cylindrical warping
         2. Compute features (Module 2 & 3: Harris + Descriptors)
         3. Match images (Module 4: Feature Matching)
         4. Find connected components
@@ -70,6 +73,12 @@ class PanoStitch:
         # Module 1: Load images
         logging.info(f"Loading {len(image_paths)} images...")
         images = [Image(path, self.resize_size) for path in image_paths]
+
+        # Apply cylindrical warping before feature detection
+        from .warping import cylindrical_warp
+        logging.info(f"Applying cylindrical warping (focal_length={self.focal_length})...")
+        for image in images:
+            image.image = cylindrical_warp(image.image, self.focal_length)
 
         # Module 2 & 3: Compute features
         detector_name = "Harris" if self.use_harris else "SIFT"
