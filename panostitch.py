@@ -44,9 +44,11 @@ from src.stitcher import PanoStitch
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="PanoStitch - Panoramic Image Stitching Pipeline")
-    parser.add_argument("input", help="Image files or directory containing images", nargs="+")
+    parser.add_argument("input", nargs="+", help="Image files or directory containing images")
     parser.add_argument("--dnn", action="store_true", help="Use DISK+LightGlue deep learning matcher instead of SIFT")
     parser.add_argument("--harris", action="store_true", help="Use Harris corner detection (only without --dnn)")
+    parser.add_argument("--no-cylindrical", action="store_true", help="Disable cylindrical warping (use standard homography)")
+    parser.add_argument("--focal-length", "-f", type=float, default=1200.0, help="Focal length for cylindrical warping (default: 1200.0)")
     parser.add_argument("--resize", type=int, default=800, help="Max dimension to resize images (default: 800)")
     args = parser.parse_args()
 
@@ -79,6 +81,8 @@ if __name__ == "__main__":
         use_harris=args.harris and not args.dnn,
         use_dnn=args.dnn,
         verbose=True,
+        focal_length=args.focal_length,
+        use_cylindrical=not args.no_cylindrical,
     )
 
     # Stitch images and get source directory

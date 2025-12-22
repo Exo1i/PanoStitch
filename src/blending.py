@@ -211,6 +211,8 @@ def add_image(
 def simple_blending(images: List[Image]) -> NDArray[np.uint8]:
     """
     Module 8: Build a panorama using simple blending (memory-optimized).
+    
+    Handles cylindrical warping black borders by using pixel validity masks.
 
     Args:
         images: Images to stitch
@@ -268,18 +270,23 @@ def simple_blending(images: List[Image]) -> NDArray[np.uint8]:
         H = (added_offset @ image.H).astype(np.float32)
         size = (width, height)
         
-        # Warp image and weights in one operation
+        # Warp image
         warped = cv2.warpPerspective(image.image, H, size, borderMode=cv2.BORDER_CONSTANT)
+        warped_float = warped.astype(np.float32)
         
-        # Compute weights efficiently
+        # Create validity mask from non-black pixels (handles cylindrical warp borders)
+        # Use a small threshold to handle interpolation artifacts at boundaries
+        valid_mask = (np.max(warped, axis=2) > 10).astype(np.float32)
+        
+        # Compute distance-based weights only for valid pixels
+        # Use the center-weighted approach but masked
         image_weights_2d = single_weights_matrix(
             (int(image.image.shape[0]), int(image.image.shape[1]))
         )
         image_weights = cv2.warpPerspective(image_weights_2d, H, size, borderMode=cv2.BORDER_CONSTANT)
         
-        # Convert warped to float32 for accurate blending (avoids intermediate uint8 conversion)
-        # Keep in valid uint8 range [0, 255] during float operations
-        warped_float = warped.astype(np.float32)
+        # Apply validity mask to weights - zero out weights where pixels are black
+        image_weights = image_weights * valid_mask
         
         # Expand weights to 3D and accumulate
         image_weights_3d = np.expand_dims(image_weights, axis=2)

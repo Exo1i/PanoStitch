@@ -27,6 +27,8 @@ class PanoStitch:
         use_harris: bool = False,
         use_dnn: bool = False,
         verbose: bool = True,
+        focal_length: float = 700.0,
+        use_cylindrical: bool = True,
     ):
         """
         Initialize PanoStitch.
@@ -39,6 +41,8 @@ class PanoStitch:
             use_harris: Whether to use Harris corner detection (True) or SIFT (False)
             use_dnn: Whether to use DISK+LightGlue deep learning matcher
             verbose: Whether to print progress
+            focal_length: Focal length for cylindrical warping (default 700.0 pixels)
+            use_cylindrical: Whether to apply cylindrical warping (default True)
         """
         self.resize_size = resize_size
         self.ratio = ratio
@@ -47,6 +51,8 @@ class PanoStitch:
         self.use_harris = use_harris
         self.use_dnn = use_dnn
         self.verbose = verbose
+        self.focal_length = focal_length
+        self.use_cylindrical = use_cylindrical
 
         if verbose:
             logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -56,7 +62,7 @@ class PanoStitch:
         Main stitching pipeline that executes all 8 modules.
 
         Pipeline:
-        1. Load images
+        1. Load images and apply cylindrical warping
         2. Compute features (Module 2 & 3: Harris + Descriptors)
         3. Match images (Module 4: Feature Matching)
         4. Find connected components
@@ -74,7 +80,21 @@ class PanoStitch:
         logging.info(f"Loading {len(image_paths)} images...")
         images = [Image(path, self.resize_size) for path in image_paths]
 
-        # Module 2 & 3: Compute features (skip if using DNN - it extracts internally)
+        # Apply cylindrical warping before feature detection (optional)
+        # Note: DeepMatcher reads directly from disk, so it doesn't see in-memory warping.
+        # We must disable cylindrical warping if using DNN to ensure coordinate consistency.
+        if self.use_dnn and self.use_cylindrical:
+            logging.warning("Warning: Cylindrical warping is incompatible with Deep Matcher (reads from disk). Disabling cylindrical warping.")
+            self.use_cylindrical = False
+
+        if self.use_cylindrical:
+            from .warping import cylindrical_warp
+            logging.info(f"Applying cylindrical warping (focal_length={self.focal_length})...")
+            for image in images:
+                image.image = cylindrical_warp(image.image, self.focal_length)
+
+        # Module 2 & 3: Compute features
+        # If using DNN, we skip SIFT/Harris feature detection here as DeepMatcher handles it internally
         if not self.use_dnn:
             detector_name = "Harris" if self.use_harris else "SIFT"
             logging.info(f"Computing features using {detector_name}...")
