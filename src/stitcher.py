@@ -12,7 +12,7 @@ from .image import Image
 from .matching import MultiImageMatches
 from .homography import find_connected_components, build_homographies
 from .gain_compensation import set_gain_compensations
-from .blending import simple_blending
+from .blending import add_image, simple_blending
 
 
 class PanoStitch:
@@ -26,6 +26,7 @@ class PanoStitch:
         gain_sigma_g: float = 0.1,
         use_harris: bool = False,
         verbose: bool = True,
+        focal_length: float = 700.0,
     ):
         """
         Initialize PanoStitch.
@@ -37,6 +38,7 @@ class PanoStitch:
             gain_sigma_g: Sigma_g for gain compensation
             use_harris: Whether to use Harris corner detection (True) or SIFT (False)
             verbose: Whether to print progress
+            focal_length: Focal length for cylindrical warping (default 700.0 pixels)
         """
         self.resize_size = resize_size
         self.ratio = ratio
@@ -44,16 +46,17 @@ class PanoStitch:
         self.gain_sigma_g = gain_sigma_g
         self.use_harris = use_harris
         self.verbose = verbose
+        self.focal_length = focal_length
 
         if verbose:
             logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    def stitch(self, image_paths: List[str]) -> List[NDArray[np.uint8]]:
+    def stitch(self, image_paths: List[str]):
         """
         Main stitching pipeline that executes all 8 modules.
 
         Pipeline:
-        1. Load images
+        1. Load images and apply cylindrical warping
         2. Compute features (Module 2 & 3: Harris + Descriptors)
         3. Match images (Module 4: Feature Matching)
         4. Find connected components
@@ -65,11 +68,17 @@ class PanoStitch:
             image_paths: List of paths to images
 
         Returns:
-            List of panoramas (one per connected component)
+            Tuple of (List of panoramas, source directory path)
         """
         # Module 1: Load images
         logging.info(f"Loading {len(image_paths)} images...")
         images = [Image(path, self.resize_size) for path in image_paths]
+
+        # Apply cylindrical warping before feature detection
+        from .warping import cylindrical_warp
+        logging.info(f"Applying cylindrical warping (focal_length={self.focal_length})...")
+        for image in images:
+            image.image = cylindrical_warp(image.image, self.focal_length)
 
         # Module 2 & 3: Compute features
         detector_name = "Harris" if self.use_harris else "SIFT"
@@ -111,11 +120,15 @@ class PanoStitch:
                 sigma_g=self.gain_sigma_g,
             )
 
-        # Apply gain
+        # Apply gain compensation with proper uint8 handling
+        # Convert to float32 first to avoid overflow, apply gain, then convert back safely
         for image in images:
-            image.image = (image.image * image.gain[np.newaxis, np.newaxis, :]).astype(
-                np.uint8
-            )
+            # Convert uint8 to float32 [0, 255]
+            img_float = image.image.astype(np.float32)
+            # Apply gain compensation per channel
+            img_compensated = img_float * image.gain[np.newaxis, np.newaxis, :]
+            # Clip to valid range and convert back to uint8
+            image.image = np.clip(img_compensated, 0, 255).astype(np.uint8)
 
         # Debug: print each image gain summary
         for image in images:
@@ -125,7 +138,29 @@ class PanoStitch:
 
         # Module 8: Blend images
         logging.info("Blending images...")
+        results = []
+        # for component in connected_components:
+        #     panorama = None
+        #     offset = np.eye(3, dtype=np.float64)
+        #     weights = None
+            
+        #     for image in component:
+        #         panorama, offset, weights = add_image(
+        #             panorama, image, offset, weights
+        #         )
+            
+        #     results.append(panorama)
+            
         results = [simple_blending(component) for component in connected_components]
 
         logging.info("✓ Stitching complete!")
-        return results
+        
+        # Determine source directory
+        from pathlib import Path
+        if image_paths and isinstance(image_paths[0], str):
+            source_dir = Path(image_paths[0]).parent
+            # Check if all images are from the same directory
+            if all(Path(img_path).parent == source_dir for img_path in image_paths):
+                return results, source_dir
+        
+        return results, None

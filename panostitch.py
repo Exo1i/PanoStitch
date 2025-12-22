@@ -72,18 +72,28 @@ if __name__ == "__main__":
         gain_sigma_g=0.1,
         use_harris=False,  # Use Harris corner detection instead of SIFT
         verbose=True,
+        focal_length=1200.0,  # Focal length for cylindrical warping
     )
 
-    # Stitch images
-    panoramas = stitcher.stitch(image_paths)
+    # Stitch images and get source directory
+    panoramas, source_dir = stitcher.stitch(image_paths)
 
-    # Save results
-    output_dir = Path("results")
-    output_dir.mkdir(exist_ok=True)
+    # Save results inside the source folder
+    if source_dir:
+        output_dir = source_dir
+    else:
+        output_dir = Path("results")
+    
+    output_dir.mkdir(exist_ok=True, parents=True)
 
     for i, panorama in enumerate(panoramas):
         output_path = output_dir / f"panorama_{i}.jpg"
-        cv2.imwrite(str(output_path), panorama)
-        print(f"✓ Saved: {output_path}")
+        # Ensure proper color handling: panorama is in BGR format from OpenCV
+        # cv2.imwrite expects BGR, so write directly without conversion
+        success = cv2.imwrite(str(output_path), panorama)
+        if success:
+            print(f"✓ Saved: {output_path}")
+        else:
+            print(f"✗ Failed to save: {output_path}")
 
     print(f"\n✓ Created {len(panoramas)} panorama(s)")

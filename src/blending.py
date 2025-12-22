@@ -12,24 +12,24 @@ from numpy.typing import NDArray
 from .image import Image
 
 
-def single_weights_array(size: int) -> NDArray[np.float64]:
+def single_weights_array(size: int) -> NDArray[np.float32]:
     """Create a 1D weights array for blending."""
     if size % 2 == 1:
-        a = np.linspace(0, 1, (size + 1) // 2, dtype=np.float64)
-        b = np.linspace(1, 0, (size + 1) // 2, dtype=np.float64)[1:]
+        a = np.linspace(0, 1, (size + 1) // 2, dtype=np.float32)
+        b = np.linspace(1, 0, (size + 1) // 2, dtype=np.float32)[1:]
         return np.concatenate([a, b])
     else:
-        a = np.linspace(0, 1, size // 2, dtype=np.float64)
-        b = np.linspace(1, 0, size // 2, dtype=np.float64)
+        a = np.linspace(0, 1, size // 2, dtype=np.float32)
+        b = np.linspace(1, 0, size // 2, dtype=np.float32)
         return np.concatenate([a, b])
 
 
-def single_weights_matrix(shape: Tuple[int, int]) -> NDArray[np.float64]:
+def single_weights_matrix(shape: Tuple[int, int]) -> NDArray[np.float32]:
     """Create a 2D weights matrix for blending."""
     return (
         single_weights_array(shape[0])[:, np.newaxis]
         @ single_weights_array(shape[1])[:, np.newaxis].T
-    )
+    ).astype(np.float32)
 
 
 def get_new_corners(
@@ -62,7 +62,7 @@ def get_offset(corners: List[NDArray[np.float64]]) -> NDArray[np.float64]:
             [0, 0, 1],
         ],
         np.float64,
-    )
+    ).astype(np.float32)
 
 
 def get_new_size(corners_images: List[List[NDArray[np.float64]]]) -> Tuple[int, int]:
@@ -129,10 +129,10 @@ def add_image(
     panorama: Optional[NDArray[np.uint8]],
     image: Image,
     offset: NDArray[np.float64],
-    weights: Optional[NDArray[np.float64]],
-) -> Tuple[NDArray[np.uint8], NDArray[np.float64], NDArray[np.float64]]:
+    weights: Optional[NDArray[np.float32]],
+) -> Tuple[NDArray[np.uint8], NDArray[np.float64], NDArray[np.float32]]:
     """
-    Module 8: Add a new image to panorama with blending.
+    Module 8: Add a new image to panorama with blending (memory-optimized).
 
     Args:
         panorama: Existing panorama
@@ -143,80 +143,76 @@ def add_image(
     Returns:
         Updated panorama, offset, and weights
     """
-    H = offset @ np.asarray(image.H, dtype=np.float64)
-    import logging
-
+    H = (offset @ np.asarray(image.H, dtype=np.float32)).astype(np.float32)
     logging.info(f"add_image: image={image.path}, H:\n{H}")
     size, added_offset = get_new_parameters(panorama, image.image, H)
-    new_image = np.asarray(
-        cv2.warpPerspective(image.image, added_offset @ H, size)
-    ).astype(np.uint8)
+    added_offset = added_offset.astype(np.float32)
+    
+    new_image = cv2.warpPerspective(image.image, added_offset @ H, size).astype(np.uint8)
     logging.info(
         f"add_image: new_image shape {new_image.shape}, min/max: {new_image.min()}/{new_image.max()}"
     )
 
     if panorama is None:
         panorama = np.zeros_like(new_image)
-        weights = np.zeros(new_image.shape, dtype=np.float64)
+        weights = np.zeros((new_image.shape[0], new_image.shape[1]), dtype=np.float32)
     else:
-        panorama = np.asarray(cv2.warpPerspective(panorama, added_offset, size)).astype(
-            np.uint8
-        )
+        panorama = cv2.warpPerspective(panorama, added_offset, size).astype(np.uint8)
         # weights may be None; if so, initialize it
         if weights is None:
-            weights = np.zeros(panorama.shape, dtype=np.float64)
+            weights = np.zeros((panorama.shape[0], panorama.shape[1]), dtype=np.float32)
         else:
-            weights = np.asarray(
-                cv2.warpPerspective(weights, added_offset, size)
-            ).astype(np.float64)
+            # Squeeze to 2D if needed, warp, then keep as 2D
+            weights_2d = weights.squeeze() if weights.ndim == 3 else weights
+            weights = cv2.warpPerspective(weights_2d, added_offset, size).astype(np.float32)
 
-    image_weights = single_weights_matrix(
+    # Compute weights efficiently without repeated expansions
+    image_weights_2d = single_weights_matrix(
         (int(image.image.shape[0]), int(image.image.shape[1]))
     )
-    image_weights = np.repeat(
-        np.asarray(cv2.warpPerspective(image_weights, added_offset @ H, size))[
-            :, :, np.newaxis
-        ].astype(np.float64),
-        3,
-        axis=2,
-    )
+    image_weights = cv2.warpPerspective(image_weights_2d, added_offset @ H, size)
+    image_weights = image_weights.astype(np.float32)
+    
     logging.info(
         f"add_image: image_weights shape {image_weights.shape}, min/max: {image_weights.min()}/{image_weights.max()}"
     )
 
-    normalized_weights = np.zeros_like(weights, dtype=np.float64)
-    # weights and image_weights are float arrays; ensure no None
-    if weights is None:
-        weights = np.zeros_like(image_weights, dtype=np.float64)
-    normalized_weights = np.divide(
-        weights, (weights + image_weights), where=(weights + image_weights) != 0
+    # Blending using float32 to save memory
+    panorama_float = panorama.astype(np.float32)
+    new_image_float = new_image.astype(np.float32)
+    
+    # Expand weights to 3D for broadcasting
+    weights_3d = np.expand_dims(weights, axis=2)
+    image_weights_3d = np.expand_dims(image_weights, axis=2)
+    
+    denom = weights_3d + image_weights_3d
+    safe_denom = np.where(denom > 0, denom, 1.0)
+    
+    # Efficient blending: only compute where both images exist or where new image exists
+    blended = np.where(
+        denom > 0,
+        (panorama_float * weights_3d + new_image_float * image_weights_3d) / safe_denom,
+        np.where(np.sum(new_image_float, axis=2, keepdims=True) > 0, new_image_float, 0)
     )
 
-    panorama = np.where(
-        np.logical_and(
-            np.repeat(np.sum(panorama, axis=2)[:, :, np.newaxis], 3, axis=2) == 0,
-            np.repeat(np.sum(new_image, axis=2)[:, :, np.newaxis], 3, axis=2) == 0,
-        ),
-        0,
-        new_image * (1 - normalized_weights) + panorama * normalized_weights,
-    ).astype(np.uint8)
-
-    new_weights = (weights + image_weights) / np.maximum(
-        (weights + image_weights).max(), 1e-10
-    )
+    panorama = np.clip(blended, 0, 255).astype(np.uint8)
+    new_weights = denom / np.maximum(denom.max(), 1e-10)
+    new_weights = new_weights.squeeze()  # Return as 2D
+    
     logging.info(
         f"add_image: new_weights shape {new_weights.shape}, min/max: {new_weights.min()}/{new_weights.max()}"
     )
-
     logging.info(
         f"add_image: after blend panorama min/max: {panorama.min()}/{panorama.max()}"
     )
-    return panorama, (added_offset @ offset).astype(np.float64), new_weights
+    return panorama, (added_offset @ offset).astype(np.float64), new_weights.astype(np.float32)
 
 
 def simple_blending(images: List[Image]) -> NDArray[np.uint8]:
     """
-    Module 8: Build a panorama using enhanced blending with distance transform weights.
+    Module 8: Build a panorama using simple blending (memory-optimized).
+    
+    Handles cylindrical warping black borders by using pixel validity masks.
 
     Args:
         images: Images to stitch
@@ -258,61 +254,66 @@ def simple_blending(images: List[Image]) -> NDArray[np.uint8]:
     # Create scaling and offset transformation
     scale_matrix = np.array(
         [[scale_factor, 0.0, 0.0], [0.0, scale_factor, 0.0], [0.0, 0.0, 1.0]],
-        dtype=np.float64,
+        dtype=np.float32,
     )
     offset_matrix = np.array(
-        [[1.0, 0.0, -min_x], [0.0, 1.0, -min_y], [0.0, 0.0, 1.0]], dtype=np.float64
+        [[1.0, 0.0, -min_x], [0.0, 1.0, -min_y], [0.0, 0.0, 1.0]], dtype=np.float32
     )
     added_offset = scale_matrix @ offset_matrix
 
-    # Use float64 for accumulation to avoid precision loss
-    panorama_float = np.zeros((height, width, 3), dtype=np.float64)
-    weights_sum = np.zeros((height, width, 3), dtype=np.float64)
+    # Use float32 for panorama and weights to save memory (50% reduction)
+    panorama_float = np.zeros((height, width, 3), dtype=np.float32)
+    weights_sum = np.zeros((height, width, 1), dtype=np.float32)
 
     # Warp every image to the global canvas and composite
-    for idx, image in enumerate(images):
-        H = added_offset @ image.H
+    for image in images:
+        H = (added_offset @ image.H).astype(np.float32)
         size = (width, height)
-        warped = cv2.warpPerspective(image.image, H, size)
         
-        # Create mask for valid pixels
-        gray = cv2.cvtColor(image.image, cv2.COLOR_BGR2GRAY)
-        mask = (gray > 0).astype(np.uint8) * 255
-        warped_mask = cv2.warpPerspective(mask, H, size)
+        # Warp image
+        warped = cv2.warpPerspective(image.image, H, size, borderMode=cv2.BORDER_CONSTANT)
+        warped_float = warped.astype(np.float32)
         
-        # Use distance transform for better weight distribution
-        # This gives higher weights to pixels farther from edges
-        dist_transform = cv2.distanceTransform(warped_mask, cv2.DIST_L2, 5)
+        # Create validity mask from non-black pixels (handles cylindrical warp borders)
+        # Use a small threshold to handle interpolation artifacts at boundaries
+        valid_mask = (np.max(warped, axis=2) > 10).astype(np.float32)
         
-        # Normalize distance transform to [0, 1]
-        if dist_transform.max() > 0:
-            dist_transform = dist_transform / dist_transform.max()
+        # Compute distance-based weights only for valid pixels
+        # Use the center-weighted approach but masked
+        image_weights_2d = single_weights_matrix(
+            (int(image.image.shape[0]), int(image.image.shape[1]))
+        )
+        image_weights = cv2.warpPerspective(image_weights_2d, H, size, borderMode=cv2.BORDER_CONSTANT)
         
-        # Apply Gaussian blur for smooth feathering (larger kernel = smoother transitions)
-        feather_amount = 51  # Must be odd number
-        dist_transform = cv2.GaussianBlur(dist_transform, (feather_amount, feather_amount), 0)
+        # Apply validity mask to weights - zero out weights where pixels are black
+        image_weights = image_weights * valid_mask
         
-        # Create 3-channel weight map
-        image_weights = np.repeat(dist_transform[:, :, np.newaxis], 3, axis=2)
+        # Expand weights to 3D and accumulate
+        image_weights_3d = np.expand_dims(image_weights, axis=2)
         
-        # Add small epsilon to avoid division by zero
-        image_weights = image_weights + 1e-10
+        # Blend using weighted average formula
+        denom = weights_sum + image_weights_3d
+        # Avoid division by zero
+        safe_denom = np.where(denom > 0, denom, 1.0)
         
-        # Accumulate weighted images
-        warped_float = warped.astype(np.float64)
-        panorama_float += warped_float * image_weights
-        weights_sum += image_weights
+        panorama_float = np.where(
+            denom > 0,
+            (panorama_float * weights_sum + warped_float * image_weights_3d) / safe_denom,
+            panorama_float
+        )
         
-        logging.info(f"Added image {idx+1}/{len(images)}, weight range: [{image_weights.min():.3f}, {image_weights.max():.3f}]")
+        weights_sum += image_weights_3d
 
-    # Normalize by total weights to get final blended result
-    # Avoid division by zero
-    mask = weights_sum > 1e-10
-    panorama_float = np.divide(panorama_float, weights_sum, where=mask, out=np.zeros_like(panorama_float))
-    
-    # Convert back to uint8
+    # Convert back to uint8 with proper clipping to preserve color range
+    # Ensure values are in valid uint8 range [0, 255]
     panorama = np.clip(panorama_float, 0, 255).astype(np.uint8)
     
-    logging.info(f"Blending complete. Output range: [{panorama.min()}, {panorama.max()}]")
-
+    # Verify color information is preserved
+    logging.info(
+        f"simple_blending: final panorama shape {panorama.shape}, "
+        f"min/max per channel: B({panorama[:,:,0].min()}/{panorama[:,:,0].max()}), "
+        f"G({panorama[:,:,1].min()}/{panorama[:,:,1].max()}), "
+        f"R({panorama[:,:,2].min()}/{panorama[:,:,2].max()})"
+    )
+    
     return panorama
