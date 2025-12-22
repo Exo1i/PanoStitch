@@ -7,7 +7,6 @@
 | Name                  | ID      | Section |
 | --------------------- | ------- | ------- |
 | Hussien Mohamed       | 9230345 | 1       |
-| Mohamed               | 9230245 | 1       |
 | Amira Khaled Ahmed    | 9230513 | 1       |
 | Abdulrahman Medhat    | 9231026 | 2       |
 | Youssef Mohamed Noser | 9231026 | 2       |

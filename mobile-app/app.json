@@ -1,0 +1,51 @@
+{
+  "expo": {
+    "name": "PanoStitch",
+    "slug": "panostitch",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F172A"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow PanoStitch to access your camera to capture panoramic photos."
+        }
+      ],
+      [
+        "expo-sensors",
+        {
+          "motionPermission": "Allow PanoStitch to access device motion for panorama preview."
+        }
+      ]
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.exo1i.panostitch",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Allow PanoStitch to access your camera to capture panoramic photos."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0F172A"
+      },
+      "edgeToEdgeEnabled": true,
+      "package": "com.exo1i.panostitch",
+      "permissions": [
+        "CAMERA"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}

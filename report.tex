@@ -13,8 +13,8 @@
 \usetikzlibrary{shapes,arrows,positioning}
 \geometry{a4paper, margin=1in}
 
-\title{PanoStitch: Image Stitching Project Report - Phase 2}
-\author{Team PanoStitch}
+\title{Image Stitching Project Report}
+\author{Youssef Noser}
 \date{\today}
 
 \begin{document}
@@ -27,7 +27,6 @@
 \hline
 \textbf{Name} & \textbf{ID} & \textbf{Section} \\ \hline
 Hussien Mohamed & 9230345 & 1 \\ \hline
-Mohamed & 9230245 & 1 \\ \hline
 Amira Khaled Ahmed & 9230513 & 1 \\ \hline
 Abdulrahman Medhat & 9231026 & 2 \\ \hline
 Youssef Mohamed Noser & 9231026 & 2 \\ \hline
@@ -38,7 +37,7 @@ Youssef Mohamed Noser & 9231026 & 2 \\ \hline
 \newpage
 
 \section{Introduction}
-PanoStitch is a modular panoramic image stitching pipeline designed to combine typically multiple overlapping images into a single, seamless panorama. This report details the algorithms used, experimental results, and the system analysis for Phase 2 of the project.
+This project is a modular panoramic image stitching pipeline designed to combine typically multiple overlapping images into a single, seamless panorama. This report details the algorithms used, experimental results, and the system analysis.
 
 \section{Work Division}
 The workload was divided as follows:
@@ -210,12 +209,12 @@ We evaluated the methods on 7 diverse scenes (Mountain, Dam, Clock, Bicycle, Flo
 Based on our experimental findings:
 
 \begin{itemize}
-    \item \textbf{PanoStitch (Ours)}: Uses explicit geometric constraints and hand-crafted features (SIFT/Harris). It is resolution-independent and extremely fast on CPU. Ideally suited for high-resolution photography where geometric precision is paramount.
+    \item \textbf{Our Implementation}: Uses explicit geometric constraints and hand-crafted features (SIFT/Harris). It is resolution-independent and extremely fast on CPU. Ideally suited for high-resolution photography where geometric precision is paramount.
     
     \item \textbf{DNN Approaches}: Excel in specific domains (e.g., low-texture regions) but come with high computational cost. DISK+LightGlue represents the state-of-the-art for sparse matching quality, while classical SIFT remains the king of speed/efficiency trade-offs.
 \end{itemize}
 
 \section{Conclusion}
-We have successfully implemented a modular image stitching pipeline. The system handles feature detection (both classical and deep learning), robust matching, and multi-image assembly with exposure correction, producing high-quality panoramas. Our Phase 2 comparative analysis confirms that while modern DNNs offer superior robustness, our optimized classical implementation generates high-quality results at a fraction of the computational cost.
+We have successfully implemented a modular image stitching pipeline. The system handles feature detection (both classical and deep learning), robust matching, and multi-image assembly with exposure correction, producing high-quality panoramas. The benchmarks we did confirm that while modern DNNs offer superior robustness, our optimized classical implementation generates high-quality results at a fraction of the computational cost.
 
 \end{document}
