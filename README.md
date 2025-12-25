@@ -6,23 +6,15 @@ A modular panoramic image stitching pipeline featuring both classic algorithms a
 
 PanoStitch is an intelligent panoramic image stitching system that seamlessly combines multiple overlapping images into a single high-resolution panorama. Our modular architecture supports both traditional computer vision techniques and cutting-edge deep learning approaches, offering flexibility and robustness for various stitching scenarios.
 
-<div style="display: flex; gap: 20px; justify-content: center; margin: 20px 0;">
-  <div style="flex: 1; max-width: 45%; text-align: center; display: flex; flex-direction: column; align-items: center;">
-    <p style="font-weight: bold; margin-bottom: 8px; color: #333; width: 100%;">Image 1</p>
-    <img src="imgs/river/image.png" alt="Input Image 1" style="width: 100%; border-radius: 8px; display: block;">
-  </div>
-  <div style="flex: 1; max-width: 45%; text-align: center; display: flex; flex-direction: column; align-items: center;">
-    <p style="font-weight: bold; margin-bottom: 8px; color: #333; width: 100%;">Image 2</p>
-    <img src="imgs/river/image copy.png" alt="Input Image 2" style="width: 100%; border-radius: 8px; display: block;">
-  </div>
-</div>
+### Input Images
 
-<div style="display: flex; justify-content: center; margin: 20px 0;">
-  <div style="max-width: 70%; text-align: center; display: flex; flex-direction: column; align-items: center;">
-    <p style="font-weight: bold; margin-bottom: 8px; color: #333;">Result Panorama</p>
-    <img src="imgs/river/panorama_0.jpg" alt="Stitched Panorama Result" style="width: 100%; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); display: block;">
-  </div>
-</div>
+| Image 1                                | Image 2                                       |
+| -------------------------------------- | --------------------------------------------- |
+| ![Input Image 1](imgs/river/image.png) | ![Input Image 2](imgs/river/image%20copy.png) |
+
+### Result Panorama
+
+![Stitched Panorama Result](imgs/river/panorama_0.jpg)
 
 ## Block Diagram
 
