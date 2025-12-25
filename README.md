@@ -32,6 +32,8 @@ This diagram illustrates the complete pipeline architecture of our panoramic sti
   <img src="docs/block diagram.png" alt="PanoStitch Pipeline Architecture" style="max-width: 100%; border-radius: 8px;">
 </div>
 
+> 💡 **Test Cases**: You can find 8 comprehensive test cases with their stitched panorama results in the `imgs/` folder (bicycle, boat, clock, dam, flower, mountain, river, tree).
+
 ## Features
 
 - **Feature Detection**: Custom Harris Corner Detector or SIFT.
