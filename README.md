@@ -2,6 +2,36 @@
 
 A modular panoramic image stitching pipeline featuring both classic algorithms and modern Deep Learning integrations.
 
+## Overview
+
+PanoStitch is an intelligent panoramic image stitching system that seamlessly combines multiple overlapping images into a single high-resolution panorama. Our modular architecture supports both traditional computer vision techniques and cutting-edge deep learning approaches, offering flexibility and robustness for various stitching scenarios.
+
+<div style="display: flex; gap: 20px; justify-content: center; margin: 20px 0;">
+  <div style="flex: 1; max-width: 45%; text-align: center;">
+    <p style="font-weight: bold; margin-bottom: 8px; color: #333;">Image 1</p>
+    <img src="imgs/river/image.png" alt="Input Image 1" style="width: 100%; border-radius: 8px;">
+  </div>
+  <div style="flex: 1; max-width: 45%; text-align: center;">
+    <p style="font-weight: bold; margin-bottom: 8px; color: #333;">Image 2</p>
+    <img src="imgs/river/image copy.png" alt="Input Image 2" style="width: 100%; border-radius: 8px;">
+  </div>
+</div>
+
+<div style="display: flex; justify-content: center; margin: 20px 0;">
+  <div style="max-width: 70%; text-align: center;">
+    <p style="font-weight: bold; margin-bottom: 8px; color: #333;">Result Panorama</p>
+    <img src="imgs/river/panorama_0.jpg" alt="Stitched Panorama Result" style="width: 100%; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);">
+  </div>
+</div>
+
+## Block Diagram
+
+This diagram illustrates the complete pipeline architecture of our panoramic stitching system:
+
+<div style="display: flex; justify-content: center; margin: 20px 0;">
+  <img src="docs/block diagram.png" alt="PanoStitch Pipeline Architecture" style="max-width: 100%; border-radius: 8px;">
+</div>
+
 ## Features
 
 - **Feature Detection**: Custom Harris Corner Detector or SIFT.
@@ -20,7 +50,9 @@ pip install -r requirements.txt
 ## Usage
 
 ### Basic Usage (Recommended)
+
 Stitch all images in a directory using the standard SIFT pipeline:
+
 ```bash
 python panostitch.py imgs/boat/
 ```
@@ -28,21 +60,19 @@ python panostitch.py imgs/boat/
 ### Comparing Methods
 
 **1. Custom "From Scratch" Implementation (Harris + HOG Descriptors)**
+
 ```bash
 python panostitch.py imgs/boat/ --harris
 ```
 
 **2. Deep Learning Pipeline (DISK + LightGlue)**
+
 ```bash
 python panostitch.py imgs/boat/ --dnn
 ```
 
-## Team Members
+# <img src="" width = "28" /> Contributors
 
-| Name | ID | Section |
-|------|----|---------|
-| Hussien Mohamed | 9230345 | 1 |
-| Mohamed | 9230245 | 1 |
-| Amira Khaled Ahmed | 9230513 | 1 |
-| Abdulrahman Medhat | 9231026 | 2 |
-| Youssef Mohamed Noser | 9231026 | 2 |
+| <a href="https://avatars.githubusercontent.com/AmiraKhalid04?v=4"><img src="https://avatars.githubusercontent.com/AmiraKhalid04?v=4" alt="Amira Khalid" width="150"></a> | <a href="https://avatars.githubusercontent.com/u/121557650?v=4"><img src="https://avatars.githubusercontent.com/u/121557650?v=4" alt="Youssef Noser" width="150"></a> | <a href="https://avatars.githubusercontent.com/u/149144312?v=4"><img src="https://avatars.githubusercontent.com/u/149144312?v=4" alt="Hussein" width="150"></a> | <a href="https://avatars.githubusercontent.com/u/136710727?v=4"><img src="https://avatars.githubusercontent.com/u/136710727?v=4" alt="Abdulrahman Medhat" width="150"></a> |
+| :----------------------------------------------------------------------------------------------------------------------------------------------------------------------: | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------: | :-------------------------------------------------------------------------------------------------------------------------------------------------------------: | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------: |
+|                                                             [Amira Khalid](https://github.com/AmiraKhalid04)                                                             |                                                               [Youssef Noser](https://github.com/Exo1i)                                                               |                                                     [Hussein Mohammed](https://github.com/Hussein-Mohamed1)                                                     |                                                            [Abdulrahman Medhat](https://github.com/bedosaber77)                                                            |
